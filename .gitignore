@@ -17,3 +17,6 @@ NGSpice
 temp/
 !assets/
 !assets/**
+.pixi/
+staticfiles/
+**/__pycache__/
