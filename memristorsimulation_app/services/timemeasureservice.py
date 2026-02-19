@@ -39,8 +39,12 @@ class TimeMeasureService:
         time_measure = TimeMeasure(start_time=self.init_python_execution_time_measure())
 
         try:
+            # Definir el comando base de ngspice
+            # -b es batch mode (fundamental para que no se abra una ventana)
             self.execute_command = f"ngspice -b {self.circuit_file_path}"
             
+            # En Linux agregamos el prefijo 'time' si realmente lo necesitás, 
+            # aunque Python ya está midiendo el tiempo.
             if self._is_os_linux():
                 self.execute_command = f"time {self.execute_command} 2>&1"
                 popen_cmd = ["bash", "-c", self.execute_command, "_"]
