@@ -39,47 +39,39 @@ class TimeMeasureService:
         time_measure = TimeMeasure(start_time=self.init_python_execution_time_measure())
 
         try:
+            self.execute_command = f"ngspice -b {self.circuit_file_path}"
+            
             if self._is_os_linux():
-                self.execute_command = f"time ngspice {self.circuit_file_path} 2>&1"
-
-                if (
-                    not self.circuit_file_path
-                    or not self.simulation_result_file_path
-                    or not self.simulation_log_path
-                ):
-                    raise FilePathNotFoundError(
-                        f"File paths not provided for TimeMeasureService. \nCircuit file path: {self.circuit_file_path}\n"
-                        f"Simulation result file path: {self.simulation_result_file_path}\n"
-                        f"Simulation log path: {self.simulation_log_path}"
-                    )
-
-                logger.info(f"Executing command: {self.execute_command}")
-
-                process = subprocess.Popen(
-                    ["bash", "-c", self.execute_command, "_"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    cwd=os.path.dirname(self.circuit_file_path),
-                    env=os.environ.copy(),
-                )
-
-                simulation_log, linux_time_output = process.communicate()
-
-                if process.returncode != 0:
-                    logger.error(
-                        f"Simulation process failed with return code: {process.returncode}"
-                    )
-                else:
-                    logger.info(f"Simulation process ended succesfully")
-
-                time_measure = self.write_python_time_measure_into_csv(time_measure)
-                self.write_linux_time_measure_into_csv(linux_time_output, time_measure)
-
+                self.execute_command = f"time {self.execute_command} 2>&1"
+                popen_cmd = ["bash", "-c", self.execute_command, "_"]
             else:
-                raise OperatingSystemError()
+                # En Windows ejecutamos ngspice directamente
+                popen_cmd = ["ngspice", "-b", self.circuit_file_path]
+
+            logger.info(f"Executing command: {self.execute_command}")
+
+            process = subprocess.Popen(
+                popen_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=os.path.dirname(self.circuit_file_path),
+                env=os.environ.copy(),
+            )
+
+            simulation_log, linux_time_output = process.communicate()
+
+            if process.returncode != 0:
+                logger.error(
+                    f"Simulation process failed with return code: {process.returncode}"
+                )
+            else:
+                logger.info(f"Simulation process ended succesfully")
+
+            time_measure = self.write_python_time_measure_into_csv(time_measure)
+            self.write_linux_time_measure_into_csv(linux_time_output, time_measure)
 
         except Exception as e:
-            logger.error(f"Error during time measurement execution: {str(e)}")
+            logger.error(f"Error during time measurement execution: {type(e).__name__} - {str(e)}")
             raise e
 
         self.write_simulation_log(
@@ -182,6 +174,10 @@ class TimeMeasureService:
     def write_linux_time_measure_into_csv(
         self, linux_time_output: bytes, time_measure: TimeMeasure
     ) -> None:
+        
+        if not self._is_os_linux() or not linux_time_output:
+            return
+
         formatted_time_measure = self._format_linux_time_output(
             linux_time_output.decode(), time_measure
         )
