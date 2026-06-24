@@ -7,6 +7,7 @@ from rest_framework import status
 from memristorsimulation_app.serializers.simulation import SimulationInputsSerializer
 from django.shortcuts import render
 from memristorsimulation_app.services.simulationservice import SimulationService
+import traceback
 
 
 class SimulationView(APIView):
@@ -41,7 +42,8 @@ class SimulationView(APIView):
 
         except Exception as e:
             return JsonResponse(
-                {"ERROR": f"Simulation and export failed: {str(e)}"},
+                {"ERROR": f"Simulation and export failed: {str(e)}"
+                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

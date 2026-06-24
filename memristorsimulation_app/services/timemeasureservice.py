@@ -48,9 +48,7 @@ class TimeMeasureService:
                     or not self.simulation_log_path
                 ):
                     raise FilePathNotFoundError(
-                        f"File paths not provided for TimeMeasureService. \nCircuit file path: {self.circuit_file_path}\n"
-                        f"Simulation result file path: {self.simulation_result_file_path}\n"
-                        f"Simulation log path: {self.simulation_log_path}"
+                        f"File paths not provided for TimeMeasureService."
                     )
 
                 logger.info(f"Executing command: {self.execute_command}")
@@ -75,11 +73,33 @@ class TimeMeasureService:
                 time_measure = self.write_python_time_measure_into_csv(time_measure)
                 self.write_linux_time_measure_into_csv(linux_time_output, time_measure)
 
+            elif self._is_os_windows():
+                logger.info(f"Executing command: ngspice \"{self.circuit_file_path}\"")
+
+                process = subprocess.Popen(
+                    ["ngspice", self.circuit_file_path],  # Popen con lista no necesita comillas
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    cwd=os.path.dirname(self.circuit_file_path),
+                    env=os.environ.copy(),
+                )
+
+                simulation_log, _ = process.communicate()
+
+                if process.returncode != 0:
+                    logger.error(
+                        f"Simulation process failed with return code: {process.returncode}"
+                    )
+                else:
+                    logger.info(f"Simulation process ended succesfully")
+
+                time_measure = self.write_python_time_measure_into_csv(time_measure)
+
             else:
                 raise OperatingSystemError()
 
         except Exception as e:
-            logger.error(f"Error during time measurement execution: {str(e)}")
+            logger.error(f"Error during time measurement execution: {str(e)}", exc_info=True)
             raise e
 
         self.write_simulation_log(
@@ -90,6 +110,10 @@ class TimeMeasureService:
             self.print_time_measure(time_measure)
 
         return time_measure
+
+    @staticmethod
+    def _is_os_windows() -> bool:
+        return sys.platform == "win32"
 
     @staticmethod
     def init_python_execution_time_measure() -> float:

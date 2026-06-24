@@ -94,9 +94,10 @@ class SimulationService(BaseTemplate):
 
         if self.simulation_inputs.network_type == NetworkType.GRAPHML_UPLOAD:
             # Use the class method you created, completely avoiding the standard __init__
-            self.network_service = NetworkService.from_graphml(
+            network_service = NetworkService.from_graphml(
                 graphml_content=self.simulation_inputs.graphml_content
             )
+            ignore_states = network_service.should_ignore_states()
         
         elif self.simulation_inputs.network_type != NetworkType.SINGLE_DEVICE:
             network_service = NetworkService(

@@ -171,32 +171,40 @@ class NetworkService:
 
     @classmethod
     def from_graphml(cls, graphml_content: str) -> "NetworkService":
-        """
-        Carga un grafo desde contenido GraphML.
-        Nodos llamados 'Vin_*' se colapsan al nodo equipotencial 'vin'.
-        Nodos llamados 'Vout_*' se colapsan al nodo equipotencial 'gnd'.
-        """
         import io
+        import re
+
         G = nx.read_graphml(io.StringIO(graphml_content))
 
-        vin_nodes  = [n for n in G.nodes() if str(n).startswith("Vin_")]
-        vout_nodes = [n for n in G.nodes() if str(n).startswith("Vout_")]
+        def is_vin(n):
+            return "Vin_" in str(n)
 
-        # Colapsar todos los Vin_* en un solo nodo "vin"
+        def is_vout(n):
+            return "Vout_" in str(n)
+
+        def node_to_spice(n) -> str:
+            """Convierte cualquier nombre de nodo a un identificador SPICE válido."""
+            s = str(n)
+            # Reemplazar cualquier caracter no alfanumérico por underscore
+            return "n" + re.sub(r"[^a-zA-Z0-9]", "_", s)
+
+        vin_nodes  = [n for n in G.nodes() if is_vin(n)]
+        vout_nodes = [n for n in G.nodes() if is_vout(n)]
+
+        # Colapsar Vin_* → "vin"
         for node in vin_nodes:
             for neighbor in list(G.neighbors(node)):
-                if neighbor not in vin_nodes:
+                if not is_vin(neighbor):
                     G.add_edge("vin", neighbor)
             G.remove_node(node)
 
-        # Colapsar todos los Vout_* en un solo nodo "gnd"
+        # Colapsar Vout_* → "gnd"
         for node in vout_nodes:
             for neighbor in list(G.neighbors(node)):
-                if neighbor not in vout_nodes:
+                if not is_vout(neighbor):
                     G.add_edge("gnd", neighbor)
             G.remove_node(node)
 
-        # Remover self-loops que puedan haber quedado
         G.remove_edges_from(nx.selfloop_edges(G))
 
         instance = cls.__new__(cls)
@@ -211,7 +219,14 @@ class NetworkService:
         return instance
 
     def _generate_netlist(self):
-        # Agregar rama para GRAPHML_UPLOAD donde los nodos ya son strings
+        import re
+
+        def node_to_spice(n) -> str:
+            s = str(n)
+            if s in ("vin", "gnd"):
+                return s
+            return "n" + re.sub(r"[^a-zA-Z0-9]", "_", s)
+
         for edge in self.network.edges:
             node1, node2 = edge[0], edge[1]
 
@@ -219,15 +234,11 @@ class NetworkService:
                 n1 = f"n{node1[0]}{node1[1]}"
                 n2 = f"n{node2[0]}{node2[1]}"
             elif self.network_type == NetworkType.GRAPHML_UPLOAD:
-                # Los nodos ya son strings; vin/gnd ya están correctos
-                n1 = str(node1)
-                n2 = str(node2)
+                n1 = node_to_spice(node1)
+                n2 = node_to_spice(node2)
             else:
                 n1 = f"n{node1}"
                 n2 = f"n{node2}"
-
-            # Mapeo vin_plus / vin_minus solo para tipos con nodos no-string
-            if self.network_type != NetworkType.GRAPHML_UPLOAD:
                 if node1 == self.vin_plus:
                     n1 = "vin"
                 elif node1 == self.vin_minus:
