@@ -1,3 +1,13 @@
+# ========================
+# Entornos de Pixi / Python
+# ========================
+.pixi/
+__pycache__/
+*.pyc
+
+# ========================
+# Resultados de Simulación
+# ========================
 *.log
 *.csv
 *.cir
@@ -7,13 +17,23 @@
 *.png
 *.Identifier
 memristorsimulation_app/simulation_results/
+
+# ========================
+# Backups y temporales
+# ========================
 backup/
-__pycache__/*
-*.pyc
-.idea
-NGSpice
 !backup/**
-.vscode/
 temp/
+
+# ========================
+# Entornos de desarrollo
+# ========================
+.idea/
+.vscode/
+
+# ========================
+# Específicos del proyecto
+# ========================
+NGSpice
 !assets/
 !assets/**
