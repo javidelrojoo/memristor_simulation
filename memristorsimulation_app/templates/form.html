@@ -801,7 +801,7 @@ document.getElementById("simulationForm").addEventListener("submit", async funct
             
             return response.json();
         })
-        ..then(data => {
+        .then(data => {
             hideProgressModal();
             showResults(data);  // ← mostrar resultados en página
         })
