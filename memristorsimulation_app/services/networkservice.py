@@ -33,6 +33,10 @@ class NetworkService:
                     f"NetworkService vin_plus and vin_minus must be None or a tuple of integers for "
                     f"NetworkType.GRID_2D_GRAPH vin_plus={vin_plus} and vin_minus={vin_minus} were received instead"
                 )
+        elif self.network_type == NetworkType.GRAPHML_UPLOAD:
+            # Safely hardcode without doing math
+            self.vin_plus = "vin"
+            self.vin_minus = "gnd"
         else:
             if (isinstance(vin_plus, int) or vin_plus is None) and (
                 isinstance(vin_minus, int) or vin_minus is None
@@ -165,72 +169,72 @@ class NetworkService:
     def should_ignore_states(self) -> bool:
         return self.network.number_of_edges() > self.MAX_AMOUNT_STATES
 
-@classmethod
-def from_graphml(cls, graphml_content: str) -> "NetworkService":
-    """
-    Carga un grafo desde contenido GraphML.
-    Nodos llamados 'Vin_*' se colapsan al nodo equipotencial 'vin'.
-    Nodos llamados 'Vout_*' se colapsan al nodo equipotencial 'gnd'.
-    """
-    import io
-    G = nx.read_graphml(io.StringIO(graphml_content))
+    @classmethod
+    def from_graphml(cls, graphml_content: str) -> "NetworkService":
+        """
+        Carga un grafo desde contenido GraphML.
+        Nodos llamados 'Vin_*' se colapsan al nodo equipotencial 'vin'.
+        Nodos llamados 'Vout_*' se colapsan al nodo equipotencial 'gnd'.
+        """
+        import io
+        G = nx.read_graphml(io.StringIO(graphml_content))
 
-    vin_nodes  = [n for n in G.nodes() if str(n).startswith("Vin_")]
-    vout_nodes = [n for n in G.nodes() if str(n).startswith("Vout_")]
+        vin_nodes  = [n for n in G.nodes() if str(n).startswith("Vin_")]
+        vout_nodes = [n for n in G.nodes() if str(n).startswith("Vout_")]
 
-    # Colapsar todos los Vin_* en un solo nodo "vin"
-    for node in vin_nodes:
-        for neighbor in list(G.neighbors(node)):
-            if neighbor not in vin_nodes:
-                G.add_edge("vin", neighbor)
-        G.remove_node(node)
+        # Colapsar todos los Vin_* en un solo nodo "vin"
+        for node in vin_nodes:
+            for neighbor in list(G.neighbors(node)):
+                if neighbor not in vin_nodes:
+                    G.add_edge("vin", neighbor)
+            G.remove_node(node)
 
-    # Colapsar todos los Vout_* en un solo nodo "gnd"
-    for node in vout_nodes:
-        for neighbor in list(G.neighbors(node)):
-            if neighbor not in vout_nodes:
-                G.add_edge("gnd", neighbor)
-        G.remove_node(node)
+        # Colapsar todos los Vout_* en un solo nodo "gnd"
+        for node in vout_nodes:
+            for neighbor in list(G.neighbors(node)):
+                if neighbor not in vout_nodes:
+                    G.add_edge("gnd", neighbor)
+            G.remove_node(node)
 
-    # Remover self-loops que puedan haber quedado
-    G.remove_edges_from(nx.selfloop_edges(G))
+        # Remover self-loops que puedan haber quedado
+        G.remove_edges_from(nx.selfloop_edges(G))
 
-    instance = cls.__new__(cls)
-    instance.network_type = NetworkType.GRAPHML_UPLOAD
-    instance.network_parameters = NetworkParameters()
-    instance.removal_probability = 0
-    instance.vin_plus = "vin"
-    instance.vin_minus = "gnd"
-    instance.network = G
-    instance.state_nodes = []
-    instance.connections = []
-    return instance
+        instance = cls.__new__(cls)
+        instance.network_type = NetworkType.GRAPHML_UPLOAD
+        instance.network_parameters = NetworkParameters()
+        instance.removal_probability = 0
+        instance.vin_plus = "vin"
+        instance.vin_minus = "gnd"
+        instance.network = G
+        instance.state_nodes = []
+        instance.connections = []
+        return instance
 
-def _generate_netlist(self):
-    # Agregar rama para GRAPHML_UPLOAD donde los nodos ya son strings
-    for edge in self.network.edges:
-        node1, node2 = edge[0], edge[1]
+    def _generate_netlist(self):
+        # Agregar rama para GRAPHML_UPLOAD donde los nodos ya son strings
+        for edge in self.network.edges:
+            node1, node2 = edge[0], edge[1]
 
-        if self.network_type == NetworkType.GRID_2D_GRAPH:
-            n1 = f"n{node1[0]}{node1[1]}"
-            n2 = f"n{node2[0]}{node2[1]}"
-        elif self.network_type == NetworkType.GRAPHML_UPLOAD:
-            # Los nodos ya son strings; vin/gnd ya están correctos
-            n1 = str(node1)
-            n2 = str(node2)
-        else:
-            n1 = f"n{node1}"
-            n2 = f"n{node2}"
+            if self.network_type == NetworkType.GRID_2D_GRAPH:
+                n1 = f"n{node1[0]}{node1[1]}"
+                n2 = f"n{node2[0]}{node2[1]}"
+            elif self.network_type == NetworkType.GRAPHML_UPLOAD:
+                # Los nodos ya son strings; vin/gnd ya están correctos
+                n1 = str(node1)
+                n2 = str(node2)
+            else:
+                n1 = f"n{node1}"
+                n2 = f"n{node2}"
 
-        # Mapeo vin_plus / vin_minus solo para tipos con nodos no-string
-        if self.network_type != NetworkType.GRAPHML_UPLOAD:
-            if node1 == self.vin_plus:
-                n1 = "vin"
-            elif node1 == self.vin_minus:
-                n1 = "gnd"
-            if node2 == self.vin_plus:
-                n2 = "vin"
-            elif node2 == self.vin_minus:
-                n2 = "gnd"
+            # Mapeo vin_plus / vin_minus solo para tipos con nodos no-string
+            if self.network_type != NetworkType.GRAPHML_UPLOAD:
+                if node1 == self.vin_plus:
+                    n1 = "vin"
+                elif node1 == self.vin_minus:
+                    n1 = "gnd"
+                if node2 == self.vin_plus:
+                    n2 = "vin"
+                elif node2 == self.vin_minus:
+                    n2 = "gnd"
 
-        self.connections.append((n1, n2))
+            self.connections.append((n1, n2))

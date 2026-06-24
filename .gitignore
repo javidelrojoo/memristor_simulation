@@ -24,6 +24,7 @@ memristorsimulation_app/simulation_results/
 backup/
 !backup/**
 temp/
+staticfiles/
 
 # ========================
 # Entornos de desarrollo

@@ -46,9 +46,12 @@ class SimulationService(BaseTemplate):
         )
         subcircuit = Subcircuit.from_dict(request_parameters["subcircuit"])
         network_type = NetworkType(request_parameters["network_type"])
-        network_params = NetworkParameters(**request_parameters["network_parameters"])
-        plot_types = request_parameters["plot_types"]
-
+        
+        # Safe extraction for network parameters
+        network_params_dict = request_parameters.get("network_parameters", {})
+        network_params = NetworkParameters(**network_params_dict)
+        
+        plot_types = request_parameters.get("plot_types", [])
         graphml_content = request_parameters.get("graphml_content", None)
 
         return SimulationInputs(
@@ -90,13 +93,12 @@ class SimulationService(BaseTemplate):
         network_service, ignore_states = None, None
 
         if self.simulation_inputs.network_type == NetworkType.GRAPHML_UPLOAD:
-            # graphml_content es un string con el XML
-            network_service = NetworkService.from_graphml(
-                self.simulation_inputs.graphml_content
+            # Use the class method you created, completely avoiding the standard __init__
+            self.network_service = NetworkService.from_graphml(
+                graphml_content=self.simulation_inputs.graphml_content
             )
-            ignore_states = network_service.should_ignore_states()
         
-        if self.simulation_inputs.network_type != NetworkType.SINGLE_DEVICE:
+        elif self.simulation_inputs.network_type != NetworkType.SINGLE_DEVICE:
             network_service = NetworkService(
                 self.simulation_inputs.network_type,
                 self.simulation_inputs.network_parameters,

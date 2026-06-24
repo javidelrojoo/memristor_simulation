@@ -763,6 +763,7 @@ document.getElementById("simulationForm").addEventListener("submit", async funct
             return;
         }
         
+        const networkType = formData.get("network_type");
         let graphmlContent = null;
         if (networkType === 'GRAPHML_UPLOAD') {
             const fileInput = document.getElementById('graphml_file');
