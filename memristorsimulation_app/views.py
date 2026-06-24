@@ -7,7 +7,7 @@ from rest_framework import status
 from memristorsimulation_app.serializers.simulation import SimulationInputsSerializer
 from django.shortcuts import render
 from memristorsimulation_app.services.simulationservice import SimulationService
-import traceback
+import base64
 
 
 class SimulationView(APIView):
@@ -26,24 +26,25 @@ class SimulationView(APIView):
         try:
             simulation_service = SimulationService(request_parameters=validated_data)
             zip_buffer = simulation_service.simulate_and_create_results_zip()
-
-            folder_name = (
-                simulation_service.simulation_inputs.export_parameters.folder_name
-            )
-            zip_filename = f"simulation_{folder_name}.zip"
-
-            response = HttpResponse(
-                zip_buffer.getvalue(), content_type="application/zip"
-            )
-            response["Content-Disposition"] = f'attachment; filename="{zip_filename}"'
-            response["Content-Length"] = len(zip_buffer.getvalue())
-
-            return response
+            
+            zip_bytes = zip_buffer.getvalue()
+            zip_base64 = base64.b64encode(zip_bytes).decode("utf-8")
+            
+            folder_name = simulation_service.simulation_inputs.export_parameters.folder_name
+            
+            return JsonResponse({
+                "zip_base64": zip_base64,
+                "folder_name": folder_name,
+                "file_size": len(zip_bytes),
+            })
 
         except Exception as e:
+            import traceback
             return JsonResponse(
-                {"ERROR": f"Simulation and export failed: {str(e)}"
-                 },
+                {
+                    "ERROR": f"Simulation and export failed: {str(e)}",
+                    "TRACEBACK": traceback.format_exc(),
+                },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

@@ -6,6 +6,7 @@
     <title>Memristor Simulation</title>
     {% load static %}
     <link rel="stylesheet" href="{% static 'css/form.css' %}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
 
@@ -798,26 +799,11 @@ document.getElementById("simulationForm").addEventListener("submit", async funct
                 });
             }
             
-            return response.blob();
+            return response.json();
         })
-        .then(blob => {
+        ..then(data => {
             hideProgressModal();
-            
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            
-            const folderName = formData.get("folder_name");
-            a.download = `simulation_${folderName}.zip`;
-            
-            document.body.appendChild(a);
-            a.click();
-            
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-            
-            showMessage("Simulation completed successfully! The results file has been downloaded.");
+            showResults(data);  // ← mostrar resultados en página
         })
         .catch(error => {
             hideProgressModal();
@@ -852,7 +838,106 @@ document.getElementById("simulationForm").addEventListener("submit", async funct
 
 updateWaveformParameters();
 updateNetworkParameters();
+
+async function showResults(data) {
+    const { zip_base64, folder_name, file_size } = data;
+    
+    // Decodificar ZIP
+    const zipBytes = Uint8Array.from(atob(zip_base64), c => c.charCodeAt(0));
+    const zipBlob = new Blob([zipBytes], { type: "application/zip" });
+    
+    // Usar JSZip para leer el contenido
+    const zip = await JSZip.loadAsync(zipBlob);
+    
+    const images = [];
+    const csvFiles = [];
+    const otherFiles = [];
+    
+    for (const [filename, file] of Object.entries(zip.files)) {
+        if (filename.endsWith(".jpg") || filename.endsWith(".png")) {
+            const blob = await file.async("blob");
+            const url = URL.createObjectURL(blob);
+            images.push({ name: filename, url });
+        } else if (filename.endsWith(".csv")) {
+            const text = await file.async("string");
+            csvFiles.push({ name: filename, content: text });
+        } else if (!file.dir) {
+            otherFiles.push(filename);
+        }
+    }
+    
+    // Mostrar el panel de resultados
+    document.getElementById("resultsPanel").style.display = "block";
+    document.getElementById("resultsFolderName").textContent = folder_name;
+    document.getElementById("resultsFileSize").textContent = (file_size / 1024).toFixed(1) + " KB";
+    
+    // Imágenes
+    const imagesContainer = document.getElementById("resultsImages");
+    imagesContainer.innerHTML = "";
+    for (const img of images) {
+        const div = document.createElement("div");
+        div.className = "result-image-wrapper";
+        div.innerHTML = `
+            <p class="result-image-name">${img.name.split("/").pop()}</p>
+            <img src="${img.url}" class="result-image" onclick="openLightbox('${img.url}')">
+        `;
+        imagesContainer.appendChild(div);
+    }
+    
+    // CSVs — mostrar primeras filas
+    const csvContainer = document.getElementById("resultsCSV");
+    csvContainer.innerHTML = "";
+    for (const csv of csvFiles) {
+        const lines = csv.content.split("\n").slice(0, 6);
+        div = document.createElement("div");
+        div.innerHTML = `<p><strong>${csv.name.split("/").pop()}</strong></p><pre class="csv-preview">${lines.join("\n")}</pre>`;
+        csvContainer.appendChild(div);
+    }
+    
+    // Botón de descarga
+    document.getElementById("downloadZipBtn").onclick = () => {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(zipBlob);
+        a.download = `simulation_${folder_name}.zip`;
+        a.click();
+    };
+    
+    // Scroll al panel
+    document.getElementById("resultsPanel").scrollIntoView({ behavior: "smooth" });
+}
+
+function openLightbox(url) {
+    document.getElementById("lightboxImg").src = url;
+    document.getElementById("lightbox").style.display = "flex";
+}
+
+function closeLightbox() {
+    document.getElementById("lightbox").style.display = "none";
+}
+
 </script>
+
+<!-- Panel de resultados -->
+<div id="resultsPanel" style="display:none;" class="form-container">
+    <h2>Simulation Results</h2>
+    <p>Folder: <strong id="resultsFolderName"></strong> — Size: <strong id="resultsFileSize"></strong></p>
+    <button class="submit-btn" id="downloadZipBtn" style="width:auto; padding: 10px 20px; margin-bottom:20px;">
+        ⬇ Download ZIP
+    </button>
+    
+    <h3>Plots</h3>
+    <div id="resultsImages" style="display:flex; flex-wrap:wrap; gap:16px;"></div>
+    
+    <h3>CSV Preview</h3>
+    <div id="resultsCSV"></div>
+</div>
+
+<!-- Lightbox para ver imágenes grandes -->
+<div id="lightbox" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; 
+     background:rgba(0,0,0,0.85); z-index:2000; justify-content:center; align-items:center;"
+     onclick="closeLightbox()">
+    <img id="lightboxImg" style="max-width:90%; max-height:90%; border-radius:8px;">
+</div>
 
 </body>
 </html>
