@@ -97,6 +97,7 @@ class NetworkType(Enum):
     GRID_2D_GRAPH = "GRID_2D_GRAPH"
     RANDOM_REGULAR_GRAPH = "RANDOM_REGULAR_GRAPH"
     WATTS_STROGATZ_GRAPH = "WATTS_STROGATZ_GRAPH"
+    GRAPHML_UPLOAD = "GRAPHML_UPLOAD"   # ← nuevo
 
 
 class InvalidMemristorModel(Exception):

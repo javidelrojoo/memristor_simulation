@@ -332,3 +332,4 @@ class SimulationInputs:
     network_parameters: NetworkParameters = None
     amount_iterations: int = 1
     plot_types: List[PlotType] = None
+    graphml_content: str = None

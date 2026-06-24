@@ -99,6 +99,7 @@ class BaseTemplate(ABC):
             NetworkType.GRID_2D_GRAPH,
             NetworkType.RANDOM_REGULAR_GRAPH,
             NetworkType.WATTS_STROGATZ_GRAPH,
+            NetworkType.GRAPHML_UPLOAD,
         ]:
             if network_service is None:
                 raise ValueError("network_service must be provided for network types.")

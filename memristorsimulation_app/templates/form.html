@@ -276,7 +276,15 @@
                             <option value="GRID_2D_GRAPH">Grid 2D</option>
                             <option value="RANDOM_REGULAR_GRAPH">Random Regular</option>
                             <option value="WATTS_STROGATZ_GRAPH">Watts Strogatz</option>
+                            <option value="GRAPHML_UPLOAD">GraphML Upload</option>
                         </select>
+                        <div id="graphml_params" class="network-params" style="display: none;">
+                        <div class="form-group">
+                            <label for="graphml_file">Archivo GraphML:</label>
+                            <input type="file" id="graphml_file" name="graphml_file" accept=".graphml,.xml">
+                        </div>
+                        <div id="graphml_preview" style="font-size:12px; color:#666; margin-top:5px;"></div>
+                        </div>
                     </div>
                     
                     <div id="grid_2d_params" class="network-params" style="display: none;">
@@ -496,6 +504,8 @@ function updateNetworkParameters() {
         document.getElementById('random_regular_params').style.display = 'block';
     } else if (networkType === 'WATTS_STROGATZ_GRAPH') {
         document.getElementById('watts_strogatz_params').style.display = 'block';
+    } else if (networkType === 'GRAPHML_UPLOAD') {
+    document.getElementById('graphml_params').style.display = 'block';
     }
     
     if (networkType === 'SINGLE_DEVICE') {
@@ -599,6 +609,13 @@ function validateForm(formData) {
         requiredFields.push('ws_amount_connections', 'ws_amount_nodes', 'shortcut_probability');
     }
     
+    if (networkType === 'GRAPHML_UPLOAD') {
+    const fileInput = document.getElementById('graphml_file');
+    if (!fileInput.files || fileInput.files.length === 0) {
+        missingFields.push('graphml_file');
+    }
+}
+    
     const missingFields = [];
     
     for (const field of requiredFields) {
@@ -644,6 +661,8 @@ function buildRequestData(formData) {
             shortcut_probability: parseFloat(formData.get("shortcut_probability")),
             seed: formData.get("ws_seed") ? parseInt(formData.get("ws_seed")) : null
         };
+    } else if (networkType === 'GRAPHML_UPLOAD') {
+    networkParameters = {};   // no se necesitan parámetros de red
     }
     
     const waveformType = formData.get("wave_form_type");
@@ -727,7 +746,7 @@ function buildRequestData(formData) {
     };
 }
 
-document.getElementById("simulationForm").addEventListener("submit", function(event) {
+document.getElementById("simulationForm").addEventListener("submit", async function(event) {
     event.preventDefault();
     
     if (simulationInProgress) {
@@ -744,8 +763,15 @@ document.getElementById("simulationForm").addEventListener("submit", function(ev
             return;
         }
         
+        let graphmlContent = null;
+        if (networkType === 'GRAPHML_UPLOAD') {
+            const fileInput = document.getElementById('graphml_file');
+            graphmlContent = await fileInput.files[0].text();
+        }
+
         const data = buildRequestData(formData);
-        
+        data.graphml_content = graphmlContent;
+
         showProgressModal();
         
         currentAbortController = new AbortController();

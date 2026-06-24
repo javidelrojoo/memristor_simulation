@@ -49,6 +49,8 @@ class SimulationService(BaseTemplate):
         network_params = NetworkParameters(**request_parameters["network_parameters"])
         plot_types = request_parameters["plot_types"]
 
+        graphml_content = request_parameters.get("graphml_content", None)
+
         return SimulationInputs(
             model=model,
             subcircuit=subcircuit,
@@ -58,6 +60,7 @@ class SimulationService(BaseTemplate):
             network_type=network_type,
             network_parameters=network_params,
             plot_types=plot_types,
+            graphml_content=graphml_content,
         )
 
     def create_subcircuit_file_service_from_request(self) -> SubcircuitFileService:
@@ -85,6 +88,14 @@ class SimulationService(BaseTemplate):
         subcircuit_file_services: SubcircuitFileService,
     ) -> CircuitFileService:
         network_service, ignore_states = None, None
+
+        if self.simulation_inputs.network_type == NetworkType.GRAPHML_UPLOAD:
+            # graphml_content es un string con el XML
+            network_service = NetworkService.from_graphml(
+                self.simulation_inputs.graphml_content
+            )
+            ignore_states = network_service.should_ignore_states()
+        
         if self.simulation_inputs.network_type != NetworkType.SINGLE_DEVICE:
             network_service = NetworkService(
                 self.simulation_inputs.network_type,

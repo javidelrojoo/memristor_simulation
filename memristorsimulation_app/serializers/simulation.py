@@ -107,3 +107,13 @@ class SimulationInputsSerializer(CamelCaseSerializer):
     plot_types = serializers.ListField(
         child=EnumField(choices=PlotType), required=False, default=[]
     )
+    graphml_content = serializers.CharField(   # ← nuevo
+        required=False, allow_null=True, allow_blank=True, default=None
+    )
+    def validate(self, data):
+        if data.get("network_type") == NetworkType.GRAPHML_UPLOAD:
+            if not data.get("graphml_content"):
+                raise serializers.ValidationError(
+                    {"graphml_content": "Se requiere el contenido GraphML cuando network_type es GRAPHML_UPLOAD."}
+                )
+        return data
