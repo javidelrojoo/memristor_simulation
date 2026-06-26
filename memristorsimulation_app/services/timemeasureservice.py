@@ -99,7 +99,7 @@ class TimeMeasureService:
                 raise OperatingSystemError()
 
         except Exception as e:
-            logger.error(f"Error during time measurement execution: {str(e)}", exc_info=True)
+            logger.error(f"Error during time measurement execution: {str(e)}")
             raise e
 
         self.write_simulation_log(

@@ -2,6 +2,9 @@ import networkx as nx
 import pandas as pd
 import os
 
+import matplotlib
+matplotlib.use('Agg')  # Add this line to use the non-interactive backend
+
 from matplotlib import pyplot as plt
 from matplotlib import animation as anime
 from typing import List
@@ -81,6 +84,22 @@ class PlotterService:
                         csv_file_path, sep=r"\s+", engine="python", skipfooter=4
                     )
                 )
+
+                # Forcefully rename columns based on their index to guarantee 
+                # compatibility with all plotting functions (time, vin, current, state)
+                rename_mapping = {}
+                
+                if len(dataframe.columns) > 0:
+                    rename_mapping[dataframe.columns[0]] = "time"
+                if len(dataframe.columns) > 1:
+                    rename_mapping[dataframe.columns[1]] = "vin"
+                if len(dataframe.columns) > 2:
+                    rename_mapping[dataframe.columns[2]] = "i(v1)"
+                if len(dataframe.columns) > 3:
+                    rename_mapping[dataframe.columns[3]] = "l0"
+                
+                dataframe.rename(columns=rename_mapping, inplace=True)
+
                 data_loaders.append(DataLoader(dataframe, csv_file_name_no_extension))
 
         return data_loaders

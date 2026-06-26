@@ -42,8 +42,7 @@ class SimulationView(APIView):
             import traceback
             return JsonResponse(
                 {
-                    "ERROR": f"Simulation and export failed: {str(e)}",
-                    "TRACEBACK": traceback.format_exc(),
+                    "ERROR": f"Simulation and export failed: {str(e)}"
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
