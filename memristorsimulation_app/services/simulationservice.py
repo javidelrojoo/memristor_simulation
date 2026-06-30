@@ -13,6 +13,7 @@ from memristorsimulation_app.representations import (
     SimulationInputs,
     SimulationParameters,
     Subcircuit,
+    OhmicJunctionParameters,
 )
 from memristorsimulation_app.services.circuitfileservice import CircuitFileService
 from memristorsimulation_app.services.directoriesmanagementservice import (

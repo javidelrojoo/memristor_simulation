@@ -91,6 +91,8 @@ class BaseTemplate(ABC):
         self,
         network_type: NetworkType,
         network_service: Optional[NetworkService] = None,
+        ohmic_probability: float = 0.0,
+        ohmic_resistance: float = 8.5e-3,
     ) -> List[DeviceParameters]:
         network_service = network_service if network_service is not None else None
         if network_type == NetworkType.SINGLE_DEVICE:

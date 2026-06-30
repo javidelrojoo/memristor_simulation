@@ -42,6 +42,7 @@ class CircuitFileService:
         file.write(self.input_parameters.get_voltage_source_as_string())
         for device_parameter in self.device_parameters:
             file.write(f"{device_parameter.get_device()}\n")
+        file.write(".options method=gear\n")
 
     def _write_analysis_commands(self, file: TextIO) -> None:
         file.write("\n\n* ANALYSIS COMMANDS:\n")

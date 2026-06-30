@@ -658,10 +658,10 @@ function buildRequestData(formData) {
     const networkType = formData.get("network_type");
     let networkParameters = {};
     
-    ohmic_junction_parameters: {
-    probability: parseFloat(formData.get("ohmic_probability")) || 0,
-    resistance: parseFloat(formData.get("ohmic_resistance")) || 8.5e-3
-    },
+    const ohmicJunctionParameters = {
+        probability: parseFloat(formData.get("ohmic_probability")) || 0,
+        resistance: parseFloat(formData.get("ohmic_resistance")) || 8.5e-3
+    };
 
     if (networkType === 'GRID_2D_GRAPH') {
         networkParameters = {
@@ -761,6 +761,7 @@ function buildRequestData(formData) {
         },
         network_type: networkType,
         network_parameters: networkParameters,
+        ohmic_junction_parameters: ohmicJunctionParameters, // <-- Added here
         amount_iterations: 1,
         plot_types: plotTypes
     };
