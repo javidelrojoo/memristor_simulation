@@ -341,6 +341,20 @@
                 </div>
 
                 <div class="form-section">
+                <h3>Ohmic Junction</h3>
+
+                <div class="form-group">
+                    <label for="ohmic_probability">Ohmic Junction Probability (0-1):</label>
+                    <input type="number" step="any" min="0" max="1" id="ohmic_probability" name="ohmic_probability" value="0">
+                </div>
+
+                <div class="form-group">
+                    <label for="ohmic_resistance">Ohmic Resistance (Ω):</label>
+                    <input type="number" step="any" id="ohmic_resistance" name="ohmic_resistance" value="0.0085">
+                </div>
+                </div>
+
+                <div class="form-section">
                     <h3>Plotter</h3>
                     
                     <div class="checkbox-group">
@@ -644,6 +658,11 @@ function buildRequestData(formData) {
     const networkType = formData.get("network_type");
     let networkParameters = {};
     
+    ohmic_junction_parameters: {
+    probability: parseFloat(formData.get("ohmic_probability")) || 0,
+    resistance: parseFloat(formData.get("ohmic_resistance")) || 8.5e-3
+    },
+
     if (networkType === 'GRID_2D_GRAPH') {
         networkParameters = {
             n: parseInt(formData.get("n")),

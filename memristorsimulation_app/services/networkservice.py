@@ -155,16 +155,23 @@ class NetworkService:
             self.connections.append((n1, n2))
 
     def generate_device_parameters(
-        self, device_name: str, subcircuit: str
+        self, device_name: str, subcircuit: str, ohmic_probability: float = 0.0, ohmic_resistance: float = 8.5e-3
     ) -> List[DeviceParameters]:
         self._generate_netlist()
 
-        return [
-            DeviceParameters(
-                device_name, index, list(connection) + [f"l{index}"], subcircuit
+        device_params = []
+        for index, connection in enumerate(self.connections):
+            is_ohmic = random.uniform(0, 1) < ohmic_probability
+            device_params.append(
+                DeviceParameters(
+                    device_name=device_name,
+                    device_number=index,
+                    nodes=list(connection) + [f"l{index}"],
+                    subcircuit=subcircuit,
+                    ohmic_resistance=ohmic_resistance if is_ohmic else None,
+                )
             )
-            for index, connection in enumerate(self.connections)
-        ]
+        return device_params
 
     def should_ignore_states(self) -> bool:
         return self.network.number_of_edges() > self.MAX_AMOUNT_STATES

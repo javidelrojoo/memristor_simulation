@@ -94,6 +94,9 @@ class NetworkParametersSerializer(CamelCaseSerializer):
     shortcut_probability = serializers.FloatField(required=False, allow_null=True)
     seed = serializers.IntegerField(required=False, allow_null=True)
 
+class OhmicJunctionParametersSerializer(CamelCaseSerializer):
+    probability = serializers.FloatField(required=False, default=0.0, min_value=0.0, max_value=1.0)
+    resistance = serializers.FloatField(required=False, default=8.5e-3)
 
 class SimulationInputsSerializer(CamelCaseSerializer):
     model = EnumField(choices=MemristorModels)
@@ -104,6 +107,7 @@ class SimulationInputsSerializer(CamelCaseSerializer):
     network_type = EnumField(choices=NetworkType)
     network_parameters = NetworkParametersSerializer(required=False, allow_null=True)
     amount_iterations = serializers.IntegerField(default=1)
+    ohmic_junction_parameters = OhmicJunctionParametersSerializer(required=False, allow_null=True)
     plot_types = serializers.ListField(
         child=EnumField(choices=PlotType), required=False, default=[]
     )

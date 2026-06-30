@@ -53,6 +53,9 @@ class SimulationService(BaseTemplate):
         
         plot_types = request_parameters.get("plot_types", [])
         graphml_content = request_parameters.get("graphml_content", None)
+        ohmic_junction_params = OhmicJunctionParameters.from_dict(
+            request_parameters.get("ohmic_junction_parameters")
+        )
 
         return SimulationInputs(
             model=model,
@@ -64,6 +67,7 @@ class SimulationService(BaseTemplate):
             network_parameters=network_params,
             plot_types=plot_types,
             graphml_content=graphml_content,
+            ohmic_junction_parameters=ohmic_junction_params,
         )
 
     def create_subcircuit_file_service_from_request(self) -> SubcircuitFileService:
@@ -106,8 +110,11 @@ class SimulationService(BaseTemplate):
             )
             ignore_states = network_service.should_ignore_states()
         device_params = self.create_device_parameters(
-            self.simulation_inputs.network_type, network_service=network_service
-        )
+            self.simulation_inputs.network_type,
+            network_service=network_service,
+            ohmic_probability=self.simulation_inputs.ohmic_junction_parameters.probability,
+            ohmic_resistance=self.simulation_inputs.ohmic_junction_parameters.resistance,
+            )
 
         return CircuitFileService(
             subcircuit_file_services,

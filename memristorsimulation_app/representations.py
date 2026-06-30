@@ -1,6 +1,7 @@
 import time
 import networkx as nx
 import pandas as pd
+import numpy as np
 
 from abc import ABC, abstractmethod
 from dataclasses import fields, dataclass, asdict, field
@@ -129,9 +130,27 @@ class DeviceParameters:
     device_number: int
     nodes: List[str]
     subcircuit: str
+    ohmic_resistance: float = None
 
     def get_device(self) -> str:
+        if self.ohmic_resistance is not None:
+            return f"R{self.device_number} {' '.join(self.nodes[:2])} {self.ohmic_resistance}"
         return f"{self.device_name}{self.device_number} {' '.join(self.nodes)} {self.subcircuit}"
+
+
+@dataclass()
+class OhmicJunctionParameters:
+    probability: float = 0.0
+    resistance: float = 8.5e-3
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "OhmicJunctionParameters":
+        if not data:
+            return cls()
+        return cls(
+            probability=float(data.get("probability", 0.0)),
+            resistance=float(data.get("resistance", 8.5e-3)),
+        )
 
 
 @dataclass()
@@ -333,3 +352,4 @@ class SimulationInputs:
     amount_iterations: int = 1
     plot_types: List[PlotType] = None
     graphml_content: str = None
+    ohmic_junction_parameters: "OhmicJunctionParameters" = None

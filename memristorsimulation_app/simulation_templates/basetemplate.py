@@ -103,7 +103,9 @@ class BaseTemplate(ABC):
         ]:
             if network_service is None:
                 raise ValueError("network_service must be provided for network types.")
-            return network_service.generate_device_parameters("xmem", "memristor")
+            return network_service.generate_device_parameters(
+                "xmem", "memristor", ohmic_probability=ohmic_probability, ohmic_resistance=ohmic_resistance
+                )
         else:
             raise InvalidNetworkType(f"Network type {network_type} not implemented.")
 
