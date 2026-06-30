@@ -57,6 +57,7 @@ class SimulationService(BaseTemplate):
         ohmic_junction_params = OhmicJunctionParameters.from_dict(
             request_parameters.get("ohmic_junction_parameters")
         )
+        force_save_states = bool(request_parameters.get("force_save_states", False))
 
         return SimulationInputs(
             model=model,
@@ -69,6 +70,7 @@ class SimulationService(BaseTemplate):
             plot_types=plot_types,
             graphml_content=graphml_content,
             ohmic_junction_parameters=ohmic_junction_params,
+            force_save_states=force_save_states,
         )
 
     def create_subcircuit_file_service_from_request(self) -> SubcircuitFileService:
@@ -110,12 +112,29 @@ class SimulationService(BaseTemplate):
                 self.simulation_inputs.network_parameters,
             )
             ignore_states = network_service.should_ignore_states()
+        
+        if self.simulation_inputs.force_save_states:
+            ignore_states = False
+        
         device_params = self.create_device_parameters(
             self.simulation_inputs.network_type,
             network_service=network_service,
             ohmic_probability=self.simulation_inputs.ohmic_junction_parameters.probability,
             ohmic_resistance=self.simulation_inputs.ohmic_junction_parameters.resistance,
             )
+        
+        if self.simulation_inputs.force_save_states and device_params:
+            state_nodes = [
+                device_param.nodes[2]
+                for device_param in device_params
+                if device_param.ohmic_resistance is None  # los óhmicos no tienen estado memristivo
+            ]
+            export_params = self.simulation_inputs.export_parameters
+            existing = set(export_params.magnitudes)
+            for node in state_nodes:
+                if node not in existing:
+                    export_params.magnitudes.append(node)
+                    existing.add(node)
 
         return CircuitFileService(
             subcircuit_file_services,

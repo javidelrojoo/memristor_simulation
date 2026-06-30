@@ -353,3 +353,4 @@ class SimulationInputs:
     plot_types: List[PlotType] = None
     graphml_content: str = None
     ohmic_junction_parameters: "OhmicJunctionParameters" = None
+    force_save_states: bool = False
