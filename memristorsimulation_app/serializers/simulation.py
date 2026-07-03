@@ -97,6 +97,10 @@ class NetworkParametersSerializer(CamelCaseSerializer):
 class OhmicJunctionParametersSerializer(CamelCaseSerializer):
     probability = serializers.FloatField(required=False, default=0.0, min_value=0.0, max_value=1.0)
     resistance = serializers.FloatField(required=False, default=8.5e-3)
+    seed = serializers.IntegerField(required=False, allow_null=True, default=None)
+    amount_realizations = serializers.IntegerField(
+        required=False, default=1, min_value=1, max_value=100
+    )
 
 class SimulationInputsSerializer(CamelCaseSerializer):
     model = EnumField(choices=MemristorModels)

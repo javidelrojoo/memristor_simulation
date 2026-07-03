@@ -358,6 +358,18 @@
                     <label for="ohmic_resistance">Ohmic Resistance (Ω):</label>
                     <input type="number" step="any" id="ohmic_resistance" name="ohmic_resistance" value="0.0085">
                 </div>
+
+                <div class="form-group">
+                    <label for="ohmic_realizations">Realizations (statistical runs):</label>
+                    <input type="number" min="1" max="100" step="1" id="ohmic_realizations" name="ohmic_realizations" value="1">
+                    <small>Corre la simulación N veces variando la semilla de asignación óhmica (misma topología de red). Cada realización se guarda en una subcarpeta seed_&lt;semilla&gt; junto a un CSV resumen.</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="ohmic_seed">Ohmic Seed (optional):</label>
+                    <input type="number" id="ohmic_seed" name="ohmic_seed" value="">
+                    <small>Semilla base para reproducibilidad. Las realizaciones usan semilla base, base+1, base+2, ... Si se deja vacío, se elige una al azar.</small>
+                </div>
                 </div>
 
                 <div class="form-section">
@@ -666,7 +678,9 @@ function buildRequestData(formData) {
     
     const ohmicJunctionParameters = {
         probability: parseFloat(formData.get("ohmic_probability")) || 0,
-        resistance: parseFloat(formData.get("ohmic_resistance")) || 8.5e-3
+        resistance: parseFloat(formData.get("ohmic_resistance")) || 8.5e-3,
+        seed: formData.get("ohmic_seed") ? parseInt(formData.get("ohmic_seed")) : null,
+        amount_realizations: parseInt(formData.get("ohmic_realizations")) || 1
     };
 
     if (networkType === 'GRID_2D_GRAPH') {

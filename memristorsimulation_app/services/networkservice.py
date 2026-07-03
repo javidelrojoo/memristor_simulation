@@ -128,6 +128,7 @@ class NetworkService:
         return network
 
     def _generate_netlist(self):
+        self.connections = []
         for edge in self.network.edges:
             node1 = edge[0]
             node2 = edge[1]
@@ -155,13 +156,19 @@ class NetworkService:
             self.connections.append((n1, n2))
 
     def generate_device_parameters(
-        self, device_name: str, subcircuit: str, ohmic_probability: float = 0.0, ohmic_resistance: float = 8.5e-3
+        self,
+        device_name: str,
+        subcircuit: str,
+        ohmic_probability: float = 0.0,
+        ohmic_resistance: float = 8.5e-3,
+        rng: random.Random = None,
     ) -> List[DeviceParameters]:
         self._generate_netlist()
+        sampler = rng if rng is not None else random
 
         device_params = []
         for index, connection in enumerate(self.connections):
-            is_ohmic = random.uniform(0, 1) < ohmic_probability
+            is_ohmic = sampler.uniform(0, 1) < ohmic_probability
             device_params.append(
                 DeviceParameters(
                     device_name=device_name,
@@ -227,6 +234,8 @@ class NetworkService:
 
     def _generate_netlist(self):
         import re
+
+        self.connections = []
 
         def node_to_spice(n) -> str:
             s = str(n)

@@ -12,6 +12,12 @@ from memristorsimulation_app.services.subcircuitfileservice import SubcircuitFil
 
 
 class CircuitFileService:
+    # NGSpice truncates control-block command lines longer than ~512 chars,
+    # which makes wrdata fail silently on large networks. Keep each wrdata
+    # command safely below that limit by splitting magnitudes across several
+    # wrdata commands (part files merged after the simulation).
+    MAX_WRDATA_LINE_LENGTH = 450
+
     def __init__(
         self,
         subcircuit_file_service: SubcircuitFileService,
@@ -63,10 +69,55 @@ class CircuitFileService:
         if self.ignore_states:
             file.write(f"wrdata {export_filename} vin i(v1)\n")
         else:
-            file.write(
-                f"wrdata {export_filename} "
-                f"{self.directories_management_service.export_parameters.get_export_magnitudes()}\n"
-            )
+            for wrdata_command in self._build_wrdata_commands(export_filename):
+                file.write(f"{wrdata_command}\n")
+
+    def _build_wrdata_commands(self, export_filename: str) -> List[str]:
+        """
+        Builds one or more wrdata commands so that no command line exceeds
+        MAX_WRDATA_LINE_LENGTH (NGSpice silently truncates long control lines).
+        The first chunk writes to export_filename; the following ones write to
+        <name>_part<N>.csv files, which are merged into export_filename after
+        the simulation (see TimeMeasureService).
+        """
+        magnitudes = (
+            self.directories_management_service.export_parameters.magnitudes
+        )
+        file_stem, file_extension = os.path.splitext(export_filename)
+
+        # Worst-case fixed length per command: "wrdata <name>_part<NN>.csv "
+        prefix_allowance = (
+            len("wrdata ") + len(file_stem) + len("_part999") + len(file_extension) + 1
+        )
+
+        chunks: List[List[str]] = []
+        current_chunk: List[str] = []
+        current_length = prefix_allowance
+
+        for magnitude in magnitudes:
+            magnitude_length = len(magnitude) + 1
+            if (
+                current_chunk
+                and current_length + magnitude_length > self.MAX_WRDATA_LINE_LENGTH
+            ):
+                chunks.append(current_chunk)
+                current_chunk = []
+                current_length = prefix_allowance
+            current_chunk.append(magnitude)
+            current_length += magnitude_length
+
+        if current_chunk:
+            chunks.append(current_chunk)
+
+        commands = []
+        for index, chunk in enumerate(chunks):
+            if index == 0:
+                chunk_filename = export_filename
+            else:
+                chunk_filename = f"{file_stem}_part{index}{file_extension}"
+            commands.append(f"wrdata {chunk_filename} {' '.join(chunk)}")
+
+        return commands
 
     def write_circuit_file(self) -> None:
         """

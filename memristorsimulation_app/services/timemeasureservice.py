@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import subprocess
 import sys
 import time
@@ -70,6 +71,8 @@ class TimeMeasureService:
                 else:
                     logger.info(f"Simulation process ended succesfully")
 
+                self._merge_wrdata_part_files()
+
                 time_measure = self.write_python_time_measure_into_csv(time_measure)
                 self.write_linux_time_measure_into_csv(linux_time_output, time_measure)
 
@@ -93,6 +96,8 @@ class TimeMeasureService:
                 else:
                     logger.info(f"Simulation process ended succesfully")
 
+                self._merge_wrdata_part_files()
+
                 time_measure = self.write_python_time_measure_into_csv(time_measure)
 
             else:
@@ -110,6 +115,61 @@ class TimeMeasureService:
             self.print_time_measure(time_measure)
 
         return time_measure
+
+    def _merge_wrdata_part_files(self) -> None:
+        """
+        Large networks need several wrdata commands (NGSpice truncates control
+        lines longer than ~512 chars), each writing a *_part<N>.csv file.
+        This merges those part files (dropping their duplicated time column)
+        back into the main results CSV and deletes them, so downstream code
+        keeps working with a single file.
+        """
+        results_path = self.simulation_result_file_path
+        if not results_path or not os.path.exists(results_path):
+            return
+
+        directory = os.path.dirname(results_path)
+        file_stem, file_extension = os.path.splitext(os.path.basename(results_path))
+        part_pattern = re.compile(
+            rf"^{re.escape(file_stem)}_part(\d+){re.escape(file_extension)}$"
+        )
+
+        part_files = sorted(
+            (
+                (int(match.group(1)), os.path.join(directory, file_name))
+                for file_name in os.listdir(directory)
+                if (match := part_pattern.match(file_name))
+            ),
+        )
+
+        if not part_files:
+            return
+
+        with open(results_path) as f:
+            merged_lines = f.read().splitlines()
+
+        for part_number, part_path in part_files:
+            with open(part_path) as f:
+                part_lines = f.read().splitlines()
+
+            if len(part_lines) != len(merged_lines):
+                logger.error(
+                    f"Cannot merge {part_path}: it has {len(part_lines)} lines but "
+                    f"{results_path} has {len(merged_lines)}. Keeping it unmerged."
+                )
+                continue
+
+            for index, part_line in enumerate(part_lines):
+                # Drop the first column (duplicated time scale) of each part
+                columns_without_time = part_line.split()[1:]
+                merged_lines[index] = (
+                    f"{merged_lines[index].rstrip()} {' '.join(columns_without_time)}"
+                )
+
+            os.remove(part_path)
+
+        with open(results_path, "w") as f:
+            f.write("\n".join(merged_lines) + "\n")
 
     @staticmethod
     def _is_os_windows() -> bool:

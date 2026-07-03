@@ -142,14 +142,19 @@ class DeviceParameters:
 class OhmicJunctionParameters:
     probability: float = 0.0
     resistance: float = 8.5e-3
+    seed: int = None
+    amount_realizations: int = 1
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "OhmicJunctionParameters":
         if not data:
             return cls()
+        seed = data.get("seed")
         return cls(
             probability=float(data.get("probability", 0.0)),
             resistance=float(data.get("resistance", 8.5e-3)),
+            seed=int(seed) if seed is not None else None,
+            amount_realizations=int(data.get("amount_realizations", 1) or 1),
         )
 
 

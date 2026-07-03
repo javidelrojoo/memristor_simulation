@@ -93,6 +93,7 @@ class BaseTemplate(ABC):
         network_service: Optional[NetworkService] = None,
         ohmic_probability: float = 0.0,
         ohmic_resistance: float = 8.5e-3,
+        rng=None,
     ) -> List[DeviceParameters]:
         network_service = network_service if network_service is not None else None
         if network_type == NetworkType.SINGLE_DEVICE:
@@ -106,7 +107,11 @@ class BaseTemplate(ABC):
             if network_service is None:
                 raise ValueError("network_service must be provided for network types.")
             return network_service.generate_device_parameters(
-                "xmem", "memristor", ohmic_probability=ohmic_probability, ohmic_resistance=ohmic_resistance
+                "xmem",
+                "memristor",
+                ohmic_probability=ohmic_probability,
+                ohmic_resistance=ohmic_resistance,
+                rng=rng,
                 )
         else:
             raise InvalidNetworkType(f"Network type {network_type} not implemented.")

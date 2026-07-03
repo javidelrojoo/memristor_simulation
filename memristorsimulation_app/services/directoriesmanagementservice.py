@@ -109,24 +109,30 @@ class DirectoriesManagementService:
 
     def get_all_simulation_files(self) -> list:
         files_to_include = []
+        seen_paths = set()
+
+        def add_file(file_path: str, archive_name: str) -> None:
+            normalized_path = os.path.normcase(os.path.normpath(file_path))
+            if normalized_path in seen_paths:
+                return
+            seen_paths.add(normalized_path)
+            files_to_include.append((file_path, archive_name.replace(os.sep, "/")))
 
         subcircuit_path = self.get_subcircuit_file_path()
         if os.path.exists(subcircuit_path):
-            files_to_include.append(
-                (subcircuit_path, os.path.basename(subcircuit_path))
-            )
+            add_file(subcircuit_path, os.path.basename(subcircuit_path))
 
         circuit_path = self.get_circuit_file_path()
         if os.path.exists(circuit_path):
-            files_to_include.append((circuit_path, os.path.basename(circuit_path)))
+            add_file(circuit_path, os.path.basename(circuit_path))
 
         export_path = self.get_export_simulation_file_path()
         if os.path.exists(export_path):
-            files_to_include.append((export_path, os.path.basename(export_path)))
+            add_file(export_path, os.path.basename(export_path))
 
         log_path = self.get_simulation_log_file_path()
         if os.path.exists(log_path):
-            files_to_include.append((log_path, os.path.basename(log_path)))
+            add_file(log_path, os.path.basename(log_path))
 
         plots_folder = self.get_or_create_figures_directory()
         if os.path.exists(plots_folder):
@@ -136,7 +142,7 @@ class DirectoriesManagementService:
                     relative_path = os.path.relpath(
                         file_path, self.get_simulation_folder_path()
                     )
-                    files_to_include.append((file_path, relative_path))
+                    add_file(file_path, relative_path)
 
         simulation_folder = self.get_simulation_folder_path()
         if os.path.exists(simulation_folder):
@@ -144,9 +150,7 @@ class DirectoriesManagementService:
                 for file in files:
                     file_path = os.path.join(root, file)
                     relative_path = os.path.relpath(file_path, simulation_folder)
-
-                    if not any(fp[0] == file_path for fp in files_to_include):
-                        files_to_include.append((file_path, relative_path))
+                    add_file(file_path, relative_path)
 
         return files_to_include
 
