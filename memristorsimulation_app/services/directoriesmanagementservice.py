@@ -24,20 +24,19 @@ class DirectoriesManagementService:
         model_simulation_folder_ = (
             ModelsSimulationFolders.get_simulation_folder_by_model(model).value
         )
-        if not os.path.exists(f"{SIMULATIONS_DIR}/{model_simulation_folder_}"):
-            os.makedirs(f"{SIMULATIONS_DIR}/{model_simulation_folder_}")
+        # exist_ok=True evita la carrera cuando varias realizaciones en
+        # paralelo intentan crear la misma carpeta a la vez.
+        os.makedirs(f"{SIMULATIONS_DIR}/{model_simulation_folder_}", exist_ok=True)
 
     def create_simulation_parameter_folder_if_not_exist(
         self, model_simulation_folder: ModelsSimulationFolders
     ) -> None:
         folder_directory = f"{SIMULATIONS_DIR}/{model_simulation_folder.value}/{self.export_parameters.folder_name}"
-        if not os.path.exists(folder_directory):
-            os.makedirs(folder_directory)
+        os.makedirs(folder_directory, exist_ok=True)
 
     def get_or_create_figures_directory(self) -> str:
         figures_dir_path = self.get_simulation_folder_path() + "/figures"
-        if not os.path.exists(figures_dir_path):
-            os.makedirs(figures_dir_path)
+        os.makedirs(figures_dir_path, exist_ok=True)
         return figures_dir_path
 
     def get_circuit_file_path(self) -> str:
@@ -58,9 +57,13 @@ class DirectoriesManagementService:
         return export_simulation_file_path
 
     def get_simulation_log_file_path(self) -> str:
+        # El nombre del log usa solo el ultimo segmento del folder_name, ya que
+        # en corridas multi-realizacion folder_name contiene subcarpetas (p. ej.
+        # "test_123/seed_42") y no debe usarse completo como nombre de archivo.
+        log_file_name = self.export_parameters.folder_name.split("/")[-1]
         return (
             f"{SIMULATIONS_DIR}/{self.export_parameters.model_simulation_folder.value}/"
-            f"{self.export_parameters.folder_name}/{self.export_parameters.folder_name}.log"
+            f"{self.export_parameters.folder_name}/{log_file_name}.log"
         )
 
     def get_circuit_dir_and_file_name(self) -> str:

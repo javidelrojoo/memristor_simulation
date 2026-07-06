@@ -2,10 +2,13 @@ import copy
 import csv
 import os
 import random
+import threading
 import zipfile
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from memristorsimulation_app.constants import (
+    SIMULATIONS_DIR,
     MemristorModels,
     NetworkType,
 )
@@ -24,11 +27,17 @@ from memristorsimulation_app.services.directoriesmanagementservice import (
 )
 from memristorsimulation_app.services.networkservice import NetworkService
 from memristorsimulation_app.services.ngspiceservice import NGSpiceService
+from memristorsimulation_app.services.plotterservice import PlotterService
 from memristorsimulation_app.services.subcircuitfileservice import SubcircuitFileService
 from memristorsimulation_app.simulation_templates.basetemplate import BaseTemplate
 
 
 class SimulationService(BaseTemplate):
+    # Maximo de procesos ngspice corriendo en simultaneo cuando hay varias
+    # realizaciones. Limitado por RAM/nucleos de la maquina (ver discusion:
+    # Ryzen 7 5825U, 8 nucleos, RAM como limite practico).
+    MAX_PARALLEL_REALIZATIONS = 5
+
     def __init__(self, request_parameters: dict):
         self.request_parameters = request_parameters
         self.simulation_inputs: SimulationInputs = self.parse_request_parameters(
@@ -39,6 +48,12 @@ class SimulationService(BaseTemplate):
             self.simulation_inputs.model, self.simulation_inputs.export_parameters
         )
         self._network_service = None
+        # matplotlib/pyplot no es thread-safe: serializa el ploteo entre
+        # realizaciones paralelas.
+        self._plot_lock = threading.Lock()
+        # generate_device_parameters muta estado interno del NetworkService
+        # compartido: serializa su uso entre realizaciones paralelas.
+        self._network_lock = threading.Lock()
 
     def parse_request_parameters(self, request_parameters: dict) -> SimulationInputs:
         model = MemristorModels(request_parameters["model"])
@@ -77,8 +92,13 @@ class SimulationService(BaseTemplate):
             force_save_states=force_save_states,
         )
 
-    def create_subcircuit_file_service_from_request(self) -> SubcircuitFileService:
+    def create_subcircuit_file_service_from_request(
+        self, directories_management_service: DirectoriesManagementService = None
+    ) -> SubcircuitFileService:
         # Sources, components, dependencies and control_cmd are created by default due to its complexity and impact in the subcircuit
+        directories_management_service = (
+            directories_management_service or self.directories_management_service
+        )
         default_sources = self.create_default_behavioural_source()
         default_components, model_dependencies = (
             self.create_default_components_and_dependencies_from_model(
@@ -91,7 +111,7 @@ class SimulationService(BaseTemplate):
             model=self.simulation_inputs.model,
             subcircuit=self.simulation_inputs.subcircuit,
             sources=default_sources,
-            directories_management_service=self.directories_management_service,
+            directories_management_service=directories_management_service,
             model_dependencies=model_dependencies,
             components=default_components,
             control_commands=[default_control_cmd],
@@ -123,7 +143,15 @@ class SimulationService(BaseTemplate):
         self,
         subcircuit_file_services: SubcircuitFileService,
         ohmic_rng: random.Random = None,
+        export_parameters: ExportParameters = None,
+        directories_management_service: DirectoriesManagementService = None,
     ) -> CircuitFileService:
+        export_parameters = (
+            export_parameters or self.simulation_inputs.export_parameters
+        )
+        directories_management_service = (
+            directories_management_service or self.directories_management_service
+        )
         network_service, ignore_states = None, None
 
         if self.simulation_inputs.network_type != NetworkType.SINGLE_DEVICE:
@@ -133,25 +161,28 @@ class SimulationService(BaseTemplate):
         if self.simulation_inputs.force_save_states:
             ignore_states = False
 
-        device_params = self.create_device_parameters(
-            self.simulation_inputs.network_type,
-            network_service=network_service,
-            ohmic_probability=self.simulation_inputs.ohmic_junction_parameters.probability,
-            ohmic_resistance=self.simulation_inputs.ohmic_junction_parameters.resistance,
-            rng=ohmic_rng,
-            )
-        
+        # El NetworkService es compartido entre realizaciones y
+        # generate_device_parameters muta su estado interno (connections),
+        # por eso se serializa con un lock al correr en paralelo.
+        with self._network_lock:
+            device_params = self.create_device_parameters(
+                self.simulation_inputs.network_type,
+                network_service=network_service,
+                ohmic_probability=self.simulation_inputs.ohmic_junction_parameters.probability,
+                ohmic_resistance=self.simulation_inputs.ohmic_junction_parameters.resistance,
+                rng=ohmic_rng,
+                )
+
         if self.simulation_inputs.force_save_states and device_params:
             state_nodes = [
                 device_param.nodes[2]
                 for device_param in device_params
                 if device_param.ohmic_resistance is None  # los óhmicos no tienen estado memristivo
             ]
-            export_params = self.simulation_inputs.export_parameters
-            existing = set(export_params.magnitudes)
+            existing = set(export_parameters.magnitudes)
             for node in state_nodes:
                 if node not in existing:
-                    export_params.magnitudes.append(node)
+                    export_parameters.magnitudes.append(node)
                     existing.add(node)
 
         return CircuitFileService(
@@ -159,34 +190,60 @@ class SimulationService(BaseTemplate):
             self.simulation_inputs.input_parameters,
             device_params,
             self.simulation_inputs.simulation_parameters,
-            self.directories_management_service,
+            directories_management_service,
             ignore_states=ignore_states,
         )
 
     def _build_from_request_and_write(
-        self, ohmic_rng: random.Random = None
+        self,
+        ohmic_rng: random.Random = None,
+        export_parameters: ExportParameters = None,
+        directories_management_service: DirectoriesManagementService = None,
     ) -> CircuitFileService:
-        subcircuit_file_service = self.create_subcircuit_file_service_from_request()
+        subcircuit_file_service = self.create_subcircuit_file_service_from_request(
+            directories_management_service=directories_management_service
+        )
         circuit_file_service = self.create_circuit_file_service_from_request(
-            subcircuit_file_service, ohmic_rng=ohmic_rng
+            subcircuit_file_service,
+            ohmic_rng=ohmic_rng,
+            export_parameters=export_parameters,
+            directories_management_service=directories_management_service,
         )
         subcircuit_file_service.write_subcircuit_file()
         circuit_file_service.write_circuit_file()
 
         return circuit_file_service
 
-    def _run_realization(self, ohmic_rng: random.Random = None) -> CircuitFileService:
-        circuit_file_service = self._build_from_request_and_write(ohmic_rng=ohmic_rng)
-        ngspice_service = NGSpiceService(self.directories_management_service)
+    def _run_realization(
+        self,
+        ohmic_rng: random.Random = None,
+        export_parameters: ExportParameters = None,
+        directories_management_service: DirectoriesManagementService = None,
+    ) -> CircuitFileService:
+        export_parameters = (
+            export_parameters or self.simulation_inputs.export_parameters
+        )
+        directories_management_service = (
+            directories_management_service or self.directories_management_service
+        )
+        circuit_file_service = self._build_from_request_and_write(
+            ohmic_rng=ohmic_rng,
+            export_parameters=export_parameters,
+            directories_management_service=directories_management_service,
+        )
+        ngspice_service = NGSpiceService(directories_management_service)
         ngspice_service.run_single_circuit_simulation(
             self.simulation_inputs.amount_iterations
         )
-        self.plot(
-            export_parameters=self.simulation_inputs.export_parameters,
-            model_parameters=circuit_file_service.subcircuit_file_service.subcircuit.model_parameters,
-            input_parameters=circuit_file_service.input_parameters,
-            plot_types=self.simulation_inputs.plot_types,
-        )
+        # pyplot usa estado global (no thread-safe): una sola realizacion
+        # plotea a la vez. ngspice, que domina el tiempo, sigue en paralelo.
+        with self._plot_lock:
+            self.plot(
+                export_parameters=export_parameters,
+                model_parameters=circuit_file_service.subcircuit_file_service.subcircuit.model_parameters,
+                input_parameters=circuit_file_service.input_parameters,
+                plot_types=self.simulation_inputs.plot_types,
+            )
         return circuit_file_service
 
     def simulate(self) -> None:
@@ -210,6 +267,11 @@ class SimulationService(BaseTemplate):
         topología de red y variando la semilla de asignación de junturas
         óhmicas. Cada realización se guarda en una subcarpeta seed_<semilla>
         y al final se escribe un CSV resumen para el análisis estadístico.
+
+        Las realizaciones corren en paralelo (hasta MAX_PARALLEL_REALIZATIONS
+        procesos ngspice simultáneos). Cada realización usa sus propios
+        ExportParameters y DirectoriesManagementService, por lo que escribe
+        en su propia carpeta seed_<semilla> sin pisarse con las demás.
         """
         ohmic_params = self.simulation_inputs.ohmic_junction_parameters
         base_export = self.simulation_inputs.export_parameters
@@ -219,50 +281,110 @@ class SimulationService(BaseTemplate):
             if ohmic_params.seed is not None
             else random.randrange(0, 2**31)
         )
+
+        # Crea la topologia de red UNA sola vez antes de lanzar los threads,
+        # para que no la construyan dos realizaciones a la vez.
+        if self.simulation_inputs.network_type != NetworkType.SINGLE_DEVICE:
+            self._get_or_create_network_service()
+
+        def run_one(realization_index: int):
+            seed = base_seed + realization_index
+
+            realization_export = copy.copy(base_export)
+            realization_export.folder_name = f"{base_folder_name}/seed_{seed}"
+            realization_export.magnitudes = list(base_export.magnitudes)
+
+            realization_dms = DirectoriesManagementService(
+                self.simulation_inputs.model, realization_export
+            )
+
+            circuit_file_service = self._run_realization(
+                ohmic_rng=random.Random(seed),
+                export_parameters=realization_export,
+                directories_management_service=realization_dms,
+            )
+            return seed, realization_export, circuit_file_service
+
+        max_workers = min(self.MAX_PARALLEL_REALIZATIONS, amount_realizations)
+        results = [None] * amount_realizations
+        errors = []
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(run_one, realization_index): realization_index
+                for realization_index in range(amount_realizations)
+            }
+            for future in as_completed(futures):
+                realization_index = futures[future]
+                try:
+                    results[realization_index] = future.result()
+                except Exception as error:
+                    errors.append((realization_index, error))
+
+        if errors:
+            errors.sort(key=lambda item: item[0])
+            raise errors[0][1]
+
         summary_rows = []
-
-        try:
-            for realization_index in range(amount_realizations):
-                seed = base_seed + realization_index
-
-                realization_export = copy.copy(base_export)
-                realization_export.folder_name = f"{base_folder_name}/seed_{seed}"
-                realization_export.magnitudes = list(base_export.magnitudes)
-
-                self.simulation_inputs.export_parameters = realization_export
-                self.directories_management_service = DirectoriesManagementService(
-                    self.simulation_inputs.model, realization_export
-                )
-
-                circuit_file_service = self._run_realization(
-                    ohmic_rng=random.Random(seed)
-                )
-
-                device_parameters = circuit_file_service.device_parameters or []
-                ohmic_devices = sum(
-                    1
-                    for device in device_parameters
-                    if device.ohmic_resistance is not None
-                )
-                summary_rows.append(
-                    {
-                        "realization": realization_index + 1,
-                        "seed": seed,
-                        "folder": f"seed_{seed}",
-                        "ohmic_probability": ohmic_params.probability,
-                        "total_devices": len(device_parameters),
-                        "ohmic_devices": ohmic_devices,
-                        "memristive_devices": len(device_parameters) - ohmic_devices,
-                        "results_csv": f"seed_{seed}/{realization_export.file_name}_results.csv",
-                    }
-                )
-        finally:
-            self.simulation_inputs.export_parameters = base_export
-            self.directories_management_service = DirectoriesManagementService(
-                self.simulation_inputs.model, base_export
+        for realization_index, (seed, realization_export, circuit_file_service) in (
+            enumerate(results)
+        ):
+            device_parameters = circuit_file_service.device_parameters or []
+            ohmic_devices = sum(
+                1
+                for device in device_parameters
+                if device.ohmic_resistance is not None
+            )
+            summary_rows.append(
+                {
+                    "realization": realization_index + 1,
+                    "seed": seed,
+                    "folder": f"seed_{seed}",
+                    "ohmic_probability": ohmic_params.probability,
+                    "total_devices": len(device_parameters),
+                    "ohmic_devices": ohmic_devices,
+                    "memristive_devices": len(device_parameters) - ohmic_devices,
+                    "results_csv": f"seed_{seed}/{realization_export.file_name}_results.csv",
+                }
             )
 
         self._write_realizations_summary(summary_rows)
+        self._plot_realizations_summary(summary_rows)
+
+    def _plot_realizations_summary(self, summary_rows: list) -> None:
+        """
+        Genera la figura resumen (promedio ± desviación estándar de la
+        corriente) a partir de los CSV de resultados de cada realización.
+        """
+        if len(summary_rows) < 2:
+            return
+
+        base_folder = self.directories_management_service.get_simulation_folder_path()
+
+        realization_dataframes = []
+        for row in summary_rows:
+            csv_path = os.path.join(base_folder, *row["results_csv"].split("/"))
+            if not os.path.exists(csv_path):
+                continue
+            try:
+                realization_dataframes.append(
+                    PlotterService.read_results_dataframe(csv_path)
+                )
+            except Exception:
+                continue
+
+        if len(realization_dataframes) < 2:
+            return
+
+        plotter_service = PlotterService(
+            simulation_results_directory_path=SIMULATIONS_DIR,
+            export_parameters=self.simulation_inputs.export_parameters,
+        )
+        plotter_service.plot_realizations_summary(
+            realization_dataframes,
+            seeds=[row["seed"] for row in summary_rows],
+            ohmic_probability=self.simulation_inputs.ohmic_junction_parameters.probability,
+        )
 
     def _write_realizations_summary(self, summary_rows: list) -> None:
         if not summary_rows:

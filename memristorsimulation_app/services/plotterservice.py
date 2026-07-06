@@ -104,6 +104,137 @@ class PlotterService:
 
         return data_loaders
 
+    @staticmethod
+    def read_results_dataframe(csv_file_path: str) -> pd.DataFrame:
+        """
+        Lee un CSV de resultados de NGSpice y normaliza los nombres de columnas
+        (time, vin, i(v1), ...) con la misma logica que load_data_from_csv.
+        """
+        dataframe = pd.DataFrame(
+            pd.read_csv(csv_file_path, sep=r"\s+", engine="python", skipfooter=4)
+        )
+
+        rename_mapping = {}
+        if len(dataframe.columns) > 0:
+            rename_mapping[dataframe.columns[0]] = "time"
+        if len(dataframe.columns) > 1:
+            rename_mapping[dataframe.columns[1]] = "vin"
+        if len(dataframe.columns) > 2:
+            rename_mapping[dataframe.columns[2]] = "i(v1)"
+        if len(dataframe.columns) > 3:
+            rename_mapping[dataframe.columns[3]] = "l0"
+        dataframe.rename(columns=rename_mapping, inplace=True)
+
+        # Descartar filas no numericas (footers/headers repetidos de NGSpice),
+        # exigiendo validez solo en las columnas clave para no perder filas por
+        # columnas de estado incompletas.
+        key_columns = [c for c in ("time", "vin", "i(v1)") if c in dataframe.columns]
+        dataframe = dataframe.apply(pd.to_numeric, errors="coerce").dropna(
+            subset=key_columns
+        )
+        dataframe.reset_index(drop=True, inplace=True)
+
+        return dataframe
+
+    def plot_realizations_summary(
+        self,
+        realization_dataframes: List[pd.DataFrame],
+        seeds: List[int] = None,
+        ohmic_probability: float = None,
+    ) -> None:
+        """
+        Figura resumen de multiples realizaciones: linea = promedio de la
+        corriente entre realizaciones, contorno sombreado = +/- 1 desviacion
+        estandar. Cada realizacion se interpola a una grilla temporal comun
+        porque NGSpice puede devolver pasos de tiempo distintos en cada corrida.
+        """
+        import numpy as np
+
+        valid_dataframes = [
+            df
+            for df in realization_dataframes
+            if df is not None
+            and "time" in df.columns
+            and "i(v1)" in df.columns
+            and len(df) >= 2  # descartar resultados vacios o corruptos
+        ]
+        if len(valid_dataframes) < 2:
+            return
+
+        reference = valid_dataframes[0]
+        time_grid = reference["time"].to_numpy(dtype=float)
+
+        currents = []
+        for df in valid_dataframes:
+            time_values = df["time"].to_numpy(dtype=float)
+            current_values = df["i(v1)"].to_numpy(dtype=float)
+            currents.append(np.interp(time_grid, time_values, current_values))
+
+        currents = np.vstack(currents)
+        mean_current = currents.mean(axis=0)
+        std_current = currents.std(axis=0)
+
+        amount = len(valid_dataframes)
+        subtitle_parts = [f"N={amount} realizaciones"]
+        if ohmic_probability is not None:
+            subtitle_parts.append(f"p_ohmica={ohmic_probability}")
+        if seeds:
+            subtitle_parts.append(f"semillas={seeds[0]}..{seeds[-1]}")
+
+        vin_grid = reference["vin"].to_numpy(dtype=float)
+
+        plt.figure(figsize=(18, 8))
+
+        # Columna izquierda: series temporales
+        plt.subplot(2, 2, 1)
+        plt.plot(time_grid, vin_grid)
+        plt.xticks([])
+        plt.ylabel("Vin [V]")
+
+        plt.subplot(2, 2, 3)
+        plt.fill_between(
+            time_grid,
+            mean_current - std_current,
+            mean_current + std_current,
+            alpha=0.3,
+            label="±1σ",
+        )
+        plt.plot(time_grid, mean_current, label="promedio")
+        plt.xlabel("Time [seg]")
+        plt.ylabel("I(t) [A]")
+        plt.legend(loc="best")
+
+        # Columna derecha: curva I-V promedio con banda ±1σ. Como Vin barre
+        # ida y vuelta (histeresis), el relleno se hace por tramos monotonos
+        # para evitar artefactos de fill_between con x no monotono.
+        plt.subplot(1, 2, 2)
+        direction_changes = np.where(np.diff(np.sign(np.diff(vin_grid))) != 0)[0] + 1
+        segment_bounds = [0] + direction_changes.tolist() + [len(vin_grid) - 1]
+        for segment_index in range(len(segment_bounds) - 1):
+            start = segment_bounds[segment_index]
+            stop = segment_bounds[segment_index + 1] + 1
+            plt.fill_between(
+                vin_grid[start:stop],
+                (mean_current - std_current)[start:stop],
+                (mean_current + std_current)[start:stop],
+                alpha=0.3,
+                color="tab:blue",
+                linewidth=0,
+                label="±1σ" if segment_index == 0 else None,
+            )
+        plt.plot(vin_grid, mean_current, color="tab:blue", label="promedio")
+        plt.xlabel("Vin [V]")
+        plt.ylabel("I [A]")
+        plt.title("I-V")
+        plt.legend(loc="best")
+
+        plt.suptitle(
+            f"Corriente promedio ± desviación estándar\n{' | '.join(subtitle_parts)}",
+            fontsize=18,
+        )
+        plt.savefig(f"{self.figures_directory_path}/realizations_mean_std.jpg")
+        plt.close()
+
     def plot_iv(self, df: pd.DataFrame, csv_file_name: str, title: str = None) -> None:
         plt.figure(figsize=(12, 8))
         plt.plot(
