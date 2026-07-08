@@ -1,6 +1,8 @@
 # Manual Installation Guide
 
-**Note**: We strongly recommend using Docker for most users. Manual installation requires more technical knowledge and troubleshooting skills. Only proceed if you have specific requirements that prevent you from using Docker.
+**Note**: For most users I recommend the [pixi](https://pixi.sh/)-based setup described in the [main README](README.md#quick-start-with-pixi-recommended). Pixi manages Python, all dependencies, and NGSpice from a single lock file, so you don't have to install or configure them yourself.
+
+This guide is for advanced users who prefer a manual setup with a Python virtual environment and pip. It requires installing **NGSpice** yourself and troubleshooting environment/PATH issues.
 
 ## Prerequisites
 
@@ -94,13 +96,13 @@ ngspice -v
 ### 3. Get the Application Code
 
 #### Option A: Download ZIP
-1. Go to the [GitHub repository](https://github.com/ignaciopineyro/memristor_simulation)
+1. Go to the [GitHub repository](https://github.com/javidelrojoo/memristor_simulation)
 2. Click "Code" → "Download ZIP"
 3. Extract to your desired folder
 
 #### Option B: Clone with Git
 ```bash
-git clone https://github.com/ignaciopineyro/memristor_simulation.git
+git clone https://github.com/javidelrojoo/memristor_simulation.git
 cd memristor_simulation
 ```
 
@@ -154,6 +156,12 @@ python manage.py runserver
 ### 7. Access the Application
 
 Open your browser and go to: http://localhost:8000
+
+### 8. (Optional) Run the Tests
+
+```bash
+pytest
+```
 
 ## Troubleshooting
 
@@ -248,12 +256,11 @@ python manage.py runserver 8001
 
 If you encounter issues with manual installation:
 
-1. **Try Docker first** - it's much more reliable
-2. **Check our [main README](README.md)** for Docker instructions
-3. **Search for your specific error message** online
-4. **Contact the developer**: ignaciopineyroo@gmail.com
+1. **Try pixi first** - it handles Python, dependencies, and NGSpice for you (see the [main README](README.md#quick-start-with-pixi-recommended))
+2. **Search for your specific error message** online
+3. **Open an issue** on the [repository](https://github.com/javidelrojoo/memristor_simulation/issues)
 
-## Why We Recommend Docker
+## Why I Recommend Pixi
 
 Manual installation can be challenging because:
 - Different operating systems have different requirements
@@ -261,4 +268,4 @@ Manual installation can be challenging because:
 - NGSpice installation varies by system
 - Environment variables and PATH issues are common
 
-Docker eliminates all these issues by providing a consistent environment.
+Pixi eliminates all these issues by providing a consistent, reproducible environment (including NGSpice) from `pixi.toml` / `pixi.lock`.
