@@ -373,6 +373,83 @@
                 </div>
 
                 <div class="form-section">
+                    <h3>Parameter Sweep</h3>
+                    <small>Barrido de parámetros: corre la simulación para cada combinación de vt × p. Cada combinación se guarda en una subcarpeta vt_&lt;vt&gt;_p_&lt;p&gt; junto a un sweep_summary.csv. Si un parámetro no se barre, se usa el valor del formulario.</small>
+
+                    <div class="form-group" style="margin-top:10px;">
+                        <label>
+                            <input type="checkbox" id="sweep_vt_enabled" onchange="updateSweepControls()">
+                            Barrer Vt (umbral)
+                        </label>
+                    </div>
+
+                    <div id="sweep_vt_controls" style="display:none; margin-left:15px;">
+                        <div class="form-group">
+                            <label for="sweep_vt_mode">Modo:</label>
+                            <select id="sweep_vt_mode" onchange="updateSweepControls()">
+                                <option value="list" selected>Lista de valores</option>
+                                <option value="range">Rango (inicio/fin/paso)</option>
+                            </select>
+                        </div>
+                        <div id="sweep_vt_list_controls" class="form-group">
+                            <label for="sweep_vt_values">Valores de Vt (separados por coma):</label>
+                            <input type="text" id="sweep_vt_values" value="0.1, 0.3, 0.6">
+                        </div>
+                        <div id="sweep_vt_range_controls" style="display:none;">
+                            <div class="form-group">
+                                <label for="sweep_vt_start">Inicio:</label>
+                                <input type="number" step="any" id="sweep_vt_start" value="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label for="sweep_vt_stop">Fin (inclusive):</label>
+                                <input type="number" step="any" id="sweep_vt_stop" value="0.6">
+                            </div>
+                            <div class="form-group">
+                                <label for="sweep_vt_step">Paso:</label>
+                                <input type="number" step="any" id="sweep_vt_step" value="0.1">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="sweep_p_enabled" onchange="updateSweepControls()">
+                            Barrer p (probabilidad de juntura óhmica)
+                        </label>
+                    </div>
+
+                    <div id="sweep_p_controls" style="display:none; margin-left:15px;">
+                        <div class="form-group">
+                            <label for="sweep_p_mode">Modo:</label>
+                            <select id="sweep_p_mode" onchange="updateSweepControls()">
+                                <option value="list" selected>Lista de valores</option>
+                                <option value="range">Rango (inicio/fin/paso)</option>
+                            </select>
+                        </div>
+                        <div id="sweep_p_list_controls" class="form-group">
+                            <label for="sweep_p_values">Valores de p (separados por coma, 0-1):</label>
+                            <input type="text" id="sweep_p_values" value="0.1, 0.2, 0.3">
+                        </div>
+                        <div id="sweep_p_range_controls" style="display:none;">
+                            <div class="form-group">
+                                <label for="sweep_p_start">Inicio:</label>
+                                <input type="number" step="any" min="0" max="1" id="sweep_p_start" value="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="sweep_p_stop">Fin (inclusive):</label>
+                                <input type="number" step="any" min="0" max="1" id="sweep_p_stop" value="0.5">
+                            </div>
+                            <div class="form-group">
+                                <label for="sweep_p_step">Paso:</label>
+                                <input type="number" step="any" id="sweep_p_step" value="0.1">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="sweep_summary_info" style="display:none; font-size:12px; color:#666;"></div>
+                </div>
+
+                <div class="form-section">
                     <h3>Plotter</h3>
                     
                     <div class="checkbox-group">
@@ -566,6 +643,129 @@ function updateNetworkParameters() {
     }
 }
 
+const MAX_SWEEP_COMBINATIONS = 100;
+
+function updateSweepControls() {
+    const vtEnabled = document.getElementById('sweep_vt_enabled').checked;
+    const pEnabled = document.getElementById('sweep_p_enabled').checked;
+
+    document.getElementById('sweep_vt_controls').style.display = vtEnabled ? 'block' : 'none';
+    document.getElementById('sweep_p_controls').style.display = pEnabled ? 'block' : 'none';
+
+    const vtMode = document.getElementById('sweep_vt_mode').value;
+    document.getElementById('sweep_vt_list_controls').style.display = vtMode === 'list' ? 'block' : 'none';
+    document.getElementById('sweep_vt_range_controls').style.display = vtMode === 'range' ? 'block' : 'none';
+
+    const pMode = document.getElementById('sweep_p_mode').value;
+    document.getElementById('sweep_p_list_controls').style.display = pMode === 'list' ? 'block' : 'none';
+    document.getElementById('sweep_p_range_controls').style.display = pMode === 'range' ? 'block' : 'none';
+
+    updateSweepSummaryInfo();
+}
+
+function parseSweepValueList(text) {
+    return text
+        .split(',')
+        .map(value => value.trim())
+        .filter(value => value !== '')
+        .map(value => parseFloat(value));
+}
+
+function buildSweepRange(start, stop, step) {
+    if (isNaN(start) || isNaN(stop) || isNaN(step) || step <= 0) {
+        return [];
+    }
+    const values = [];
+    const epsilon = step * 1e-6;
+    for (let value = start; value <= stop + epsilon; value += step) {
+        // Redondea para evitar acumulacion de error de punto flotante (0.30000000000000004)
+        values.push(parseFloat(value.toPrecision(10)));
+        if (values.length > MAX_SWEEP_COMBINATIONS) break;
+    }
+    return values;
+}
+
+// Devuelve {vtValues, pValues} o lanza Error con mensaje para el usuario.
+function getSweepValues() {
+    const vtEnabled = document.getElementById('sweep_vt_enabled').checked;
+    const pEnabled = document.getElementById('sweep_p_enabled').checked;
+
+    let vtValues = [];
+    let pValues = [];
+
+    if (vtEnabled) {
+        if (document.getElementById('sweep_vt_mode').value === 'list') {
+            vtValues = parseSweepValueList(document.getElementById('sweep_vt_values').value);
+        } else {
+            vtValues = buildSweepRange(
+                parseFloat(document.getElementById('sweep_vt_start').value),
+                parseFloat(document.getElementById('sweep_vt_stop').value),
+                parseFloat(document.getElementById('sweep_vt_step').value)
+            );
+        }
+        if (vtValues.length === 0 || vtValues.some(isNaN)) {
+            throw new Error("Barrido de Vt: valores inválidos o vacíos.");
+        }
+    }
+
+    if (pEnabled) {
+        if (document.getElementById('sweep_p_mode').value === 'list') {
+            pValues = parseSweepValueList(document.getElementById('sweep_p_values').value);
+        } else {
+            pValues = buildSweepRange(
+                parseFloat(document.getElementById('sweep_p_start').value),
+                parseFloat(document.getElementById('sweep_p_stop').value),
+                parseFloat(document.getElementById('sweep_p_step').value)
+            );
+        }
+        if (pValues.length === 0 || pValues.some(isNaN)) {
+            throw new Error("Barrido de p: valores inválidos o vacíos.");
+        }
+        if (pValues.some(value => value < 0 || value > 1)) {
+            throw new Error("Barrido de p: todos los valores deben estar entre 0 y 1.");
+        }
+    }
+
+    const combinations = Math.max(1, vtValues.length) * Math.max(1, pValues.length);
+    if (combinations > MAX_SWEEP_COMBINATIONS) {
+        throw new Error(`El barrido genera ${combinations} combinaciones; el máximo permitido es ${MAX_SWEEP_COMBINATIONS}.`);
+    }
+
+    return { vtValues, pValues };
+}
+
+function updateSweepSummaryInfo() {
+    const info = document.getElementById('sweep_summary_info');
+    const vtEnabled = document.getElementById('sweep_vt_enabled').checked;
+    const pEnabled = document.getElementById('sweep_p_enabled').checked;
+
+    if (!vtEnabled && !pEnabled) {
+        info.style.display = 'none';
+        return;
+    }
+
+    info.style.display = 'block';
+    try {
+        const { vtValues, pValues } = getSweepValues();
+        const combinations = Math.max(1, vtValues.length) * Math.max(1, pValues.length);
+        const realizations = parseInt(document.getElementById('ohmic_realizations').value) || 1;
+        info.textContent = `${combinations} combinación(es) × ${realizations} realización(es) = ${combinations * realizations} simulaciones.`;
+        info.style.color = '#666';
+    } catch (error) {
+        info.textContent = error.message;
+        info.style.color = '#dc3545';
+    }
+}
+
+['sweep_vt_values', 'sweep_vt_start', 'sweep_vt_stop', 'sweep_vt_step',
+ 'sweep_p_values', 'sweep_p_start', 'sweep_p_stop', 'sweep_p_step',
+ 'ohmic_realizations'].forEach(id => {
+    const element = document.getElementById(id);
+    if (element) {
+        element.addEventListener('input', updateSweepSummaryInfo);
+    }
+});
+
 function showMessage(message, isError = false) {
     const modal = document.getElementById('messageModal');
     const modalIcon = document.getElementById('modalIcon');
@@ -742,8 +942,18 @@ function buildRequestData(formData) {
         };
     }
     
+    const { vtValues, pValues } = getSweepValues();
+    let sweepParameters = null;
+    if (vtValues.length > 0 || pValues.length > 0) {
+        sweepParameters = {
+            vt_values: vtValues,
+            ohmic_probability_values: pValues
+        };
+    }
+
     return {
         model: model,
+        sweep_parameters: sweepParameters,
         subcircuit: {
             model_parameters: {
                 alpha: parseFloat(formData.get("alpha")),
@@ -881,6 +1091,7 @@ document.getElementById("simulationForm").addEventListener("submit", async funct
 
 updateWaveformParameters();
 updateNetworkParameters();
+updateSweepControls();
 
 async function showResults(data) {
     const { zip_base64, folder_name, file_size } = data;

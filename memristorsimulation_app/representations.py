@@ -159,6 +159,46 @@ class OhmicJunctionParameters:
 
 
 @dataclass()
+class SweepParameters:
+    """
+    Barrido de parámetros: listas de valores de vt (umbral) y/o de
+    probabilidad de juntura óhmica (p). Si una lista está vacía se usa el
+    valor único del formulario para ese parámetro.
+    """
+
+    vt_values: List[float] = field(default_factory=list)
+    ohmic_probability_values: List[float] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "SweepParameters":
+        if not data:
+            return cls()
+        return cls(
+            vt_values=[float(value) for value in (data.get("vt_values") or [])],
+            ohmic_probability_values=[
+                float(value)
+                for value in (data.get("ohmic_probability_values") or [])
+            ],
+        )
+
+    def is_sweep(self) -> bool:
+        return bool(self.vt_values) or bool(self.ohmic_probability_values)
+
+    def combinations(
+        self, default_vt: float, default_ohmic_probability: float
+    ) -> List[Tuple[float, float]]:
+        vt_values = self.vt_values or [default_vt]
+        probability_values = self.ohmic_probability_values or [
+            default_ohmic_probability
+        ]
+        return [
+            (vt, probability)
+            for vt in vt_values
+            for probability in probability_values
+        ]
+
+
+@dataclass()
 class ModelParameters:
     alpha: float
     beta: float
@@ -369,3 +409,4 @@ class SimulationInputs:
     graphml_content: str = None
     ohmic_junction_parameters: "OhmicJunctionParameters" = None
     force_save_states: bool = False
+    sweep_parameters: SweepParameters = None

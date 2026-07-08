@@ -20,6 +20,7 @@ from memristorsimulation_app.representations import (
     SimulationParameters,
     Subcircuit,
     OhmicJunctionParameters,
+    SweepParameters,
 )
 from memristorsimulation_app.services.circuitfileservice import CircuitFileService
 from memristorsimulation_app.services.directoriesmanagementservice import (
@@ -77,6 +78,9 @@ class SimulationService(BaseTemplate):
             request_parameters.get("ohmic_junction_parameters")
         )
         force_save_states = bool(request_parameters.get("force_save_states", False))
+        sweep_params = SweepParameters.from_dict(
+            request_parameters.get("sweep_parameters")
+        )
 
         return SimulationInputs(
             model=model,
@@ -90,6 +94,7 @@ class SimulationService(BaseTemplate):
             graphml_content=graphml_content,
             ohmic_junction_parameters=ohmic_junction_params,
             force_save_states=force_save_states,
+            sweep_parameters=sweep_params,
         )
 
     def create_subcircuit_file_service_from_request(
@@ -247,6 +252,11 @@ class SimulationService(BaseTemplate):
         return circuit_file_service
 
     def simulate(self) -> None:
+        sweep_params = self.simulation_inputs.sweep_parameters
+        if sweep_params is not None and sweep_params.is_sweep():
+            self._simulate_sweep()
+            return
+
         ohmic_params = self.simulation_inputs.ohmic_junction_parameters
         amount_realizations = max(1, ohmic_params.amount_realizations or 1)
 
@@ -260,6 +270,88 @@ class SimulationService(BaseTemplate):
             return
 
         self._simulate_multiple_realizations(amount_realizations)
+
+    def _simulate_sweep(self) -> None:
+        """
+        Ejecuta un barrido sobre vt (umbral) y/o p (probabilidad de juntura
+        óhmica). Cada combinación corre la simulación completa (incluyendo
+        realizaciones múltiples si corresponde) en una subcarpeta
+        vt_<vt>_p_<p> dentro de la carpeta base, y al final se escribe un
+        sweep_summary.csv con el índice de combinaciones.
+
+        La topología de red se construye UNA sola vez y se comparte entre
+        todas las combinaciones, de modo que solo cambian vt y p (y, dentro
+        de cada combinación, la asignación óhmica según su semilla).
+
+        Las combinaciones corren secuencialmente: cada una ya puede
+        paralelizar sus realizaciones internas (MAX_PARALLEL_REALIZATIONS).
+        """
+        combinations = self.simulation_inputs.sweep_parameters.combinations(
+            self.simulation_inputs.subcircuit.model_parameters.vt,
+            self.simulation_inputs.ohmic_junction_parameters.probability,
+        )
+        # folder_name ya incluye el timestamp (ExportParameters.__post_init__)
+        base_folder_name = self.simulation_inputs.export_parameters.folder_name
+
+        shared_network_service = None
+        if self.simulation_inputs.network_type != NetworkType.SINGLE_DEVICE:
+            shared_network_service = self._get_or_create_network_service()
+
+        summary_rows = []
+        for combination_index, (vt, ohmic_probability) in enumerate(combinations):
+            combination_folder = (
+                f"{base_folder_name}/vt_{vt:g}_p_{ohmic_probability:g}"
+            )
+
+            combination_request = copy.deepcopy(self.request_parameters)
+            combination_request.pop("sweep_parameters", None)
+            combination_request["subcircuit"]["model_parameters"]["vt"] = vt
+            ohmic_dict = dict(
+                combination_request.get("ohmic_junction_parameters") or {}
+            )
+            ohmic_dict["probability"] = ohmic_probability
+            combination_request["ohmic_junction_parameters"] = ohmic_dict
+
+            combination_service = SimulationService(combination_request)
+            # Pisa el folder_name re-timestampeado por __post_init__ para que
+            # la combinación quede como subcarpeta de la carpeta base. El
+            # DirectoriesManagementService comparte la misma instancia de
+            # ExportParameters, por lo que ve el cambio.
+            combination_service.simulation_inputs.export_parameters.folder_name = (
+                combination_folder
+            )
+            combination_service._network_service = shared_network_service
+            combination_service.simulate()
+
+            ohmic_params = combination_service.simulation_inputs.ohmic_junction_parameters
+            summary_rows.append(
+                {
+                    "combination": combination_index + 1,
+                    "vt": vt,
+                    "ohmic_probability": ohmic_probability,
+                    "folder": f"vt_{vt:g}_p_{ohmic_probability:g}",
+                    "amount_realizations": max(
+                        1, ohmic_params.amount_realizations or 1
+                    ),
+                }
+            )
+
+        self._write_sweep_summary(summary_rows)
+
+    def _write_sweep_summary(self, summary_rows: list) -> None:
+        if not summary_rows:
+            return
+
+        base_folder = self.directories_management_service.get_simulation_folder_path()
+        os.makedirs(base_folder, exist_ok=True)
+        summary_file_path = os.path.join(base_folder, "sweep_summary.csv")
+
+        with open(summary_file_path, "w", newline="") as summary_file:
+            writer = csv.DictWriter(
+                summary_file, fieldnames=list(summary_rows[0].keys())
+            )
+            writer.writeheader()
+            writer.writerows(summary_rows)
 
     def _simulate_multiple_realizations(self, amount_realizations: int) -> None:
         """

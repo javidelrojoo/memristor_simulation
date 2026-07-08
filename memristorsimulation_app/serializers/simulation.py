@@ -102,6 +102,31 @@ class OhmicJunctionParametersSerializer(CamelCaseSerializer):
         required=False, default=1, min_value=1, max_value=100
     )
 
+class SweepParametersSerializer(CamelCaseSerializer):
+    MAX_COMBINATIONS = 100
+
+    vt_values = serializers.ListField(
+        child=serializers.FloatField(), required=False, default=list, max_length=50
+    )
+    ohmic_probability_values = serializers.ListField(
+        child=serializers.FloatField(min_value=0.0, max_value=1.0),
+        required=False,
+        default=list,
+        max_length=50,
+    )
+
+    def validate(self, data):
+        amount_combinations = max(1, len(data.get("vt_values", []))) * max(
+            1, len(data.get("ohmic_probability_values", []))
+        )
+        if amount_combinations > self.MAX_COMBINATIONS:
+            raise serializers.ValidationError(
+                f"El barrido genera {amount_combinations} combinaciones; "
+                f"el máximo permitido es {self.MAX_COMBINATIONS}."
+            )
+        return data
+
+
 class SimulationInputsSerializer(CamelCaseSerializer):
     model = EnumField(choices=MemristorModels)
     subcircuit = SubcircuitSerializer()
@@ -112,6 +137,7 @@ class SimulationInputsSerializer(CamelCaseSerializer):
     network_parameters = NetworkParametersSerializer(required=False, allow_null=True)
     amount_iterations = serializers.IntegerField(default=1)
     ohmic_junction_parameters = OhmicJunctionParametersSerializer(required=False, allow_null=True)
+    sweep_parameters = SweepParametersSerializer(required=False, allow_null=True)
     plot_types = serializers.ListField(
         child=EnumField(choices=PlotType), required=False, default=[]
     )
