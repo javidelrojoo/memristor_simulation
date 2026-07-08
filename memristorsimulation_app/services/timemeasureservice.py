@@ -29,6 +29,9 @@ class TimeMeasureService:
         self.simulation_result_file_path = (
             self.directories_management_service.get_export_simulation_file_path()
         )
+        self.simulation_states_file_path = (
+            self.directories_management_service.get_export_states_file_path()
+        )
         self.simulation_log_path = (
             self.directories_management_service.get_simulation_log_file_path()
         )
@@ -71,23 +74,43 @@ class TimeMeasureService:
                 else:
                     logger.info(f"Simulation process ended succesfully")
 
+                self._log_ngspice_reported_errors(
+                    simulation_log.decode(errors="replace")
+                )
                 self._merge_wrdata_part_files()
 
                 time_measure = self.write_python_time_measure_into_csv(time_measure)
                 self.write_linux_time_measure_into_csv(linux_time_output, time_measure)
 
             elif self._is_os_windows():
-                logger.info(f"Executing command: ngspice \"{self.circuit_file_path}\"")
+                # -b (batch) evita la ventana interactiva de ngspice y -o guarda
+                # toda su salida (errores incluidos, ej. "singular matrix" o
+                # "Timestep too small") en el log del seed. Sin esto, el ngspice
+                # de Windows manda los mensajes a su propia consola, los pipes
+                # llegan vacios y el log queda sin informacion util.
+                # El log se pasa como nombre relativo porque ngspice corre con
+                # cwd en la carpeta del seed: las rutas absolutas con espacios
+                # y separadores mezclados ("\" y "/") hacen fallar el -o en
+                # Windows con "No such file or directory".
+                command = [
+                    "ngspice",
+                    "-b",
+                    "-o",
+                    os.path.basename(self.simulation_log_path),
+                    self.circuit_file_path,
+                ]
+                logger.info(f"Executing command: {subprocess.list2cmdline(command)}")
 
                 process = subprocess.Popen(
-                    ["ngspice", self.circuit_file_path],  # Popen con lista no necesita comillas
+                    command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     cwd=os.path.dirname(self.circuit_file_path),
                     env=os.environ.copy(),
                 )
 
-                simulation_log, _ = process.communicate()
+                stdout_output, stderr_output = process.communicate()
+                simulation_log = stdout_output + stderr_output
 
                 if process.returncode != 0:
                     logger.error(
@@ -96,6 +119,7 @@ class TimeMeasureService:
                 else:
                     logger.info(f"Simulation process ended succesfully")
 
+                self._log_ngspice_reported_errors()
                 self._merge_wrdata_part_files()
 
                 time_measure = self.write_python_time_measure_into_csv(time_measure)
@@ -116,15 +140,54 @@ class TimeMeasureService:
 
         return time_measure
 
+    NGSPICE_ERROR_MARKERS = (
+        "singular matrix",
+        "timestep too small",
+        "simulation(s) aborted",
+        "no convergence",
+        "fatal error",
+    )
+
+    def _log_ngspice_reported_errors(self, ngspice_output: str = None) -> None:
+        """
+        Scans the NGSpice output for known fatal messages and logs them, so
+        failed runs are visible in the console instead of failing silently
+        (NGSpice exits with code 0 even after aborting the transient).
+        If no text is given, reads the seed log written by 'ngspice -b -o'.
+        """
+        if ngspice_output is None:
+            if not self.simulation_log_path or not os.path.exists(
+                self.simulation_log_path
+            ):
+                return
+            with open(self.simulation_log_path, errors="replace") as f:
+                ngspice_output = f.read()
+
+        lowered_output = ngspice_output.lower()
+        found_markers = [
+            marker for marker in self.NGSPICE_ERROR_MARKERS if marker in lowered_output
+        ]
+        if found_markers:
+            logger.error(
+                f"NGSpice reported errors ({', '.join(found_markers)}) - "
+                f"see {self.simulation_log_path}"
+            )
+
     def _merge_wrdata_part_files(self) -> None:
         """
         Large networks need several wrdata commands (NGSpice truncates control
         lines longer than ~512 chars), each writing a *_part<N>.csv file.
         This merges those part files (dropping their duplicated time column)
-        back into the main results CSV and deletes them, so downstream code
-        keeps working with a single file.
+        back into the base CSV and deletes them, so downstream code keeps
+        working with a single file. Part files are generated for the states
+        CSV (the results CSV only holds time, vin, i(v1) and never needs
+        splitting), but the results CSV is also checked for backwards
+        compatibility.
         """
-        results_path = self.simulation_result_file_path
+        self._merge_wrdata_part_files_into(self.simulation_states_file_path)
+        self._merge_wrdata_part_files_into(self.simulation_result_file_path)
+
+    def _merge_wrdata_part_files_into(self, results_path: str) -> None:
         if not results_path or not os.path.exists(results_path):
             return
 

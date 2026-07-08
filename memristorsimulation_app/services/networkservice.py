@@ -1,9 +1,13 @@
+import logging
+
 import networkx as nx
 import random
 
 from typing import Tuple, List, Union
 from memristorsimulation_app.constants import NetworkType, NetworkTypeNotImplemented
 from memristorsimulation_app.representations import NetworkParameters, DeviceParameters
+
+logger = logging.getLogger(__name__)
 
 
 class NetworkService:
@@ -52,6 +56,7 @@ class NetworkService:
                 )
 
         self.network = self.generate_network()
+        self._prune_floating_components()
         self.state_nodes = []
         self.connections = []
 
@@ -126,6 +131,43 @@ class NetworkService:
             network.remove_edge(edge[0], edge[1])
 
         return network
+
+    def _prune_floating_components(self) -> None:
+        """
+        Removes connected components that contain neither vin nor gnd.
+
+        Those "floating islands" carry no current (they have no path to the
+        source) but make the circuit matrix singular in NGSpice, which can
+        abort the simulation at the initial timepoint with
+        'Warning: singular matrix: check node ...' depending on how ohmic
+        and memristive devices happen to be assigned inside the island.
+        """
+        components = list(nx.connected_components(self.network))
+        if len(components) <= 1:
+            return
+
+        kept_nodes = set()
+        floating_components = 0
+        for component in components:
+            if self.vin_plus in component or self.vin_minus in component:
+                kept_nodes |= component
+            else:
+                floating_components += 1
+
+        if not kept_nodes:
+            raise ValueError(
+                "NetworkService found no connected component containing vin or gnd: "
+                "the network is not connected to the source."
+            )
+
+        floating_nodes = set(self.network.nodes) - kept_nodes
+        if floating_nodes:
+            logger.warning(
+                f"Pruning {len(floating_nodes)} nodes in {floating_components} "
+                f"floating component(s) with no path to vin/gnd "
+                f"(kept {len(kept_nodes)} nodes)"
+            )
+            self.network.remove_nodes_from(floating_nodes)
 
     def _generate_netlist(self):
         self.connections = []
@@ -228,6 +270,7 @@ class NetworkService:
         instance.vin_plus = "vin"
         instance.vin_minus = "gnd"
         instance.network = G
+        instance._prune_floating_components()
         instance.state_nodes = []
         instance.connections = []
         return instance

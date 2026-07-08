@@ -29,6 +29,65 @@ from memristorsimulation_app.services.subcircuitfileservice import SubcircuitFil
 
 
 class BaseTemplate(ABC):
+    # Nombres de los atributos de la clase (p. ej. ["ALPHA", "BETA", "VT"]) que
+    # se agregan al nombre de la carpeta de exportacion. Con None o lista vacia
+    # se usa EXPORT_FOLDER_NAME tal cual (comportamiento actual). Es una lista
+    # para poder elegir que parametros incluir en cada template.
+    FOLDER_NAME_PARAMETERS: Optional[List[str]] = None
+
+    def build_export_folder_name(
+        self,
+        base_name: Optional[str] = None,
+        parameter_names: Optional[List[str]] = None,
+    ) -> str:
+        """Genera el nombre de la carpeta de exportacion a partir de los
+        parametros de la simulacion.
+
+        Cada parametro se agrega como '<nombre en minusculas><valor>'.
+        Ejemplo: con FOLDER_NAME_PARAMETERS = ["ALPHA", "BETA", "VT"] en
+        SingleDevice genera 'single_device_alpha0_beta500000_vt0.6'.
+
+        Args:
+            base_name: nombre base de la carpeta. Por defecto usa
+                EXPORT_FOLDER_NAME de la clase.
+            parameter_names: lista de nombres de atributos a incluir. Por
+                defecto usa FOLDER_NAME_PARAMETERS de la clase. Con None o
+                lista vacia devuelve el nombre base sin cambios.
+        """
+        if base_name is None:
+            base_name = getattr(self, "EXPORT_FOLDER_NAME", "")
+        if parameter_names is None:
+            parameter_names = self.FOLDER_NAME_PARAMETERS
+        if not parameter_names:
+            return base_name
+
+        parts = []
+        for name in parameter_names:
+            if not hasattr(self, name):
+                raise AttributeError(
+                    f"El parametro '{name}' de FOLDER_NAME_PARAMETERS no existe "
+                    f"en {type(self).__name__}"
+                )
+            value = self._format_parameter_value(getattr(self, name))
+            parts.append(f"{name.lower()}{value}")
+
+        return "_".join([base_name] + parts) if base_name else "_".join(parts)
+
+    @staticmethod
+    def _format_parameter_value(value) -> str:
+        if isinstance(value, float):
+            text = f"{value:g}"
+        elif isinstance(value, type):
+            # Para parametros como WAVE_FORM que son clases.
+            text = value.__name__
+        else:
+            text = str(value)
+        # Sanitiza caracteres invalidos para nombres de carpeta.
+        text = text.replace("+", "")
+        for invalid_char in ' /\\:*?"<>|':
+            text = text.replace(invalid_char, "-")
+        return text
+
     def create_default_behavioural_source(self) -> List[BehaviouralSource]:
         return [
             BehaviouralSource(

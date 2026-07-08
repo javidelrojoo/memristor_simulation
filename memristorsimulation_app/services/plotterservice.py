@@ -1,6 +1,7 @@
+import os
+
 import networkx as nx
 import pandas as pd
-import os
 
 import matplotlib
 matplotlib.use('Agg')  # Add this line to use the non-interactive backend
@@ -85,10 +86,10 @@ class PlotterService:
                     )
                 )
 
-                # Forcefully rename columns based on their index to guarantee 
+                # Forcefully rename columns based on their index to guarantee
                 # compatibility with all plotting functions (time, vin, current, state)
                 rename_mapping = {}
-                
+
                 if len(dataframe.columns) > 0:
                     rename_mapping[dataframe.columns[0]] = "time"
                 if len(dataframe.columns) > 1:
@@ -97,12 +98,52 @@ class PlotterService:
                     rename_mapping[dataframe.columns[2]] = "i(v1)"
                 if len(dataframe.columns) > 3:
                     rename_mapping[dataframe.columns[3]] = "l0"
-                
+
                 dataframe.rename(columns=rename_mapping, inplace=True)
+
+                dataframe = self._append_states_columns(dataframe)
 
                 data_loaders.append(DataLoader(dataframe, csv_file_name_no_extension))
 
         return data_loaders
+
+    def _append_states_columns(self, dataframe: pd.DataFrame) -> pd.DataFrame:
+        """
+        Los estados internos se guardan en un CSV separado
+        (<file_name>_states.csv, con el tiempo como referencia) para que el
+        *_results.csv quede liviano. Si ese archivo existe, se agregan sus
+        columnas de estado al dataframe de resultados para que los plots de
+        estados sigan funcionando igual que cuando todo estaba en un CSV.
+        """
+        states_file_path = os.path.join(
+            self.simulations_directory_path,
+            f"{self.export_parameters.file_name}_states.csv",
+        )
+        if "l0" in dataframe.columns or not os.path.exists(states_file_path):
+            # Formato viejo (estados ya incluidos) o simulacion sin estados.
+            return dataframe
+
+        states_dataframe = pd.DataFrame(
+            pd.read_csv(states_file_path, sep=r"\s+", engine="python")
+        )
+        if len(states_dataframe.columns) < 2:
+            return dataframe
+
+        # La primera columna es el tiempo (duplicado como referencia): se
+        # descarta y las columnas de estado se agregan por posicion, ya que
+        # ambos CSV provienen de la misma corrida de NGSpice.
+        states_dataframe = states_dataframe.iloc[: len(dataframe), 1:]
+        states_dataframe.rename(
+            columns={states_dataframe.columns[0]: "l0"}, inplace=True
+        )
+
+        return pd.concat(
+            [
+                dataframe.reset_index(drop=True),
+                states_dataframe.reset_index(drop=True),
+            ],
+            axis=1,
+        )
 
     @staticmethod
     def read_results_dataframe(csv_file_path: str) -> pd.DataFrame:

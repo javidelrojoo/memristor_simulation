@@ -86,7 +86,7 @@ class GeometricNetworkPulses(BaseTemplate):
         )
         self.export_params = ExportParameters(
             ModelsSimulationFolders.get_simulation_folder_by_model(self.model),
-            self.EXPORT_FOLDER_NAME,
+            self.build_export_folder_name(),
             self.EXPORT_FILE_NAME,
             ["vin", "i(v1)"]
             + [device_param.nodes[2] for device_param in self.device_params],

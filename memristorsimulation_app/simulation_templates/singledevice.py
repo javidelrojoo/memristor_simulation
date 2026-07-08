@@ -44,6 +44,10 @@ class SingleDevice(BaseTemplate):
     T_STOP = 2
 
     EXPORT_FOLDER_NAME = "single_device"
+    # Opcional: parametros a incluir en el nombre de la carpeta. Ejemplo:
+    # FOLDER_NAME_PARAMETERS = ["ALPHA", "BETA", "VT", "AMPLITUDE"]
+    # genera 'single_device_alpha0_beta500000_vt0.6_amplitude10_<timestamp>'
+    FOLDER_NAME_PARAMETERS = None
     EXPORT_FILE_NAME = "single_device_simulation"
     AMOUNT_ITERATIONS = 100
 
@@ -58,7 +62,7 @@ class SingleDevice(BaseTemplate):
         self.model = model
         self.export_params = ExportParameters(
             ModelsSimulationFolders.get_simulation_folder_by_model(self.model),
-            self.EXPORT_FOLDER_NAME,
+            self.build_export_folder_name(),
             self.EXPORT_FILE_NAME,
             ["vin", "i(v1)", "l0"],
         )

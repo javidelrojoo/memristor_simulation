@@ -185,9 +185,19 @@ class SimulationParameters:
     uic: bool = None
 
     def get_analysis(self) -> str:
+        # Los parametros de .tran son POSICIONALES: "tstep tstop tstart tmax uic".
+        # Si hay tmax pero no tstart, hay que emitir tstart=0 igual, porque si
+        # queda vacio NGSpice interpreta el tmax como tstart y la simulacion
+        # corre sin techo de paso (silenciosamente). Ademas se compara contra
+        # None y no por truthiness, para no descartar un tstart=0 explicito.
+        tstart = self.tstart
+        if self.tmax is not None and tstart is None:
+            tstart = 0
+
         return (
-            f"{self.analysis_type.value} {self.tstep} {self.tstop} {self.tstart if self.tstart else ''}"
-            f" {self.tmax if self.tmax else ''} {'uic' if self.uic else ''}"
+            f"{self.analysis_type.value} {self.tstep} {self.tstop} "
+            f"{tstart if tstart is not None else ''}"
+            f" {self.tmax if self.tmax is not None else ''} {'uic' if self.uic else ''}"
         )
 
     @classmethod

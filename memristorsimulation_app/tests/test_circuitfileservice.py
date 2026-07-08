@@ -1,3 +1,5 @@
+import os
+
 from memristorsimulation_app.constants import MemristorModels
 from memristorsimulation_app.tests.basetestcase import BaseTestCase
 
@@ -26,9 +28,10 @@ class CircuitFileServiceTestCase(BaseTestCase):
             content,
         )
 
-        # Dependencies
+        # Dependencies (se usa solo el nombre de archivo para que NGSpice no
+        # falle con rutas con espacios)
         self.assertIn(
-            f".include {circuit_file_service.directories_management_service.get_subcircuit_file_path()}",
+            f".include {os.path.basename(circuit_file_service.directories_management_service.get_subcircuit_file_path())}",
             content,
         )
 
@@ -54,9 +57,22 @@ class CircuitFileServiceTestCase(BaseTestCase):
         self.assertIn("run", content)
         self.assertIn("set wr_vecnames", content)
         self.assertIn("set wr_singlescale", content)
+        # El CSV de resultados solo lleva la curva IV (time como escala,
+        # vin, i(v1)); los estados internos van a un CSV separado.
+        results_filename = os.path.basename(
+            circuit_file_service.directories_management_service.get_export_simulation_file_path()
+        )
+        states_filename = os.path.basename(
+            circuit_file_service.directories_management_service.get_export_states_file_path()
+        )
+        state_magnitudes = [
+            magnitude
+            for magnitude in circuit_file_service.directories_management_service.export_parameters.magnitudes
+            if magnitude not in circuit_file_service.IV_MAGNITUDES
+        ]
+        self.assertIn(f"wrdata {results_filename} vin i(v1)", content)
         self.assertIn(
-            f"wrdata {circuit_file_service.directories_management_service.get_export_simulation_file_path()} "
-            f"{circuit_file_service.directories_management_service.export_parameters.get_export_magnitudes()}",
+            f"wrdata {states_filename} {' '.join(state_magnitudes)}",
             content,
         )
 

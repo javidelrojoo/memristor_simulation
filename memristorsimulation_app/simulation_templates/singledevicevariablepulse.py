@@ -94,7 +94,7 @@ class SingleDeviceVariableAmplitude(BaseTemplate):
         export_file_name = "pulse_variable"
         export_params = ExportParameters(
             ModelsSimulationFolders.get_simulation_folder_by_model(self.model),
-            self.EXPORT_FOLDER_NAME,
+            self.build_export_folder_name(),
             export_file_name,
             ["vin", "i(v1)", "l0"],
         )
@@ -137,7 +137,7 @@ class SingleDeviceVariableAmplitude(BaseTemplate):
                 ModelsSimulationFolders.get_simulation_folder_by_model(
                     subcircuit_file_service.model
                 ),
-                self.EXPORT_FOLDER_NAME,
+                self.build_export_folder_name(),
                 export_file_name,
                 ["vin", "i(v1)", "l0"],
             )

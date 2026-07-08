@@ -56,6 +56,20 @@ class DirectoriesManagementService:
 
         return export_simulation_file_path
 
+    def get_export_states_file_path(self) -> str:
+        """
+        Ruta del CSV de estados internos. Se guarda separado del *_results.csv
+        (que solo tiene time, vin, i(v1)) para que los archivos IV queden
+        livianos; el tiempo se repite en este archivo como referencia.
+        """
+        self.create_simulation_parameter_folder_if_not_exist(
+            self.export_parameters.model_simulation_folder
+        )
+        return (
+            f"{SIMULATIONS_DIR}/{self.export_parameters.model_simulation_folder.value}/"
+            f"{self.export_parameters.folder_name}/{self.export_parameters.file_name}_states.csv"
+        )
+
     def get_simulation_log_file_path(self) -> str:
         # El nombre del log usa solo el ultimo segmento del folder_name, ya que
         # en corridas multi-realizacion folder_name contiene subcarpetas (p. ej.
